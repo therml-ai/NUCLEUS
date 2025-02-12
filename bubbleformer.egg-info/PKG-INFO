@@ -1,0 +1,8 @@
+Metadata-Version: 2.2
+Name: bubbleformer
+Version: 0.0.0
+Summary: Train Foundational Models om BubbleML
+Author: Sheikh Md Shakeel Hassan
+License-File: LICENSE
+Dynamic: author
+Dynamic: summary

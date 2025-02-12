@@ -1,5 +1,5 @@
 import random
-from typing import Tuple
+from typing import Tuple, Optional
 
 import wandb
 from omegaconf import OmegaConf, DictConfig
@@ -39,7 +39,15 @@ class ForecastModule(L.LightningModule):
 
         self.criterion = LpLoss(d=2, p=2, reduce_dims=[0,1,2], reductions=["mean", "mean", "sum"])
         self.model = get_model(self.model_cfg["name"], **self.model_cfg["params"])
-        self.validation_outputs = []
+        self.T_max = None
+        self.validation_sample = None
+    
+    def setup(
+        self,
+        stage: Optional[str] = None
+    ):
+        if stage == "fit":
+            self.T_max = self.trainer.estimated_stepping_batches
 
     def forward(
         self,
@@ -64,16 +72,18 @@ class ForecastModule(L.LightningModule):
             prog_bar=True,
             logger=True
         )
+        opt = self.optimizers()
+        current_lr = opt.param_groups[0]['lr']
         self.log(
             "learning_rate",
-            self.lr_schedulers().get_lr(),
+            current_lr,
             on_step=True,
             on_epoch=False,
             prog_bar=True,
             logger=True
         )
         if self.log_wandb:
-            wandb.log({"train_loss": loss, "learning_rate": self.lr_schedulers().get_lr()})
+            wandb.log({"train_loss": loss, "learning_rate": current_lr})
 
         return loss
 
@@ -85,7 +95,8 @@ class ForecastModule(L.LightningModule):
         inp, tgt = batch
         pred = self.model(inp)
         loss = self.criterion(pred, tgt)
-        self.validation_outputs.append((inp, tgt, pred))
+        if random.random() < 0.5:
+            self.validation_sample = (inp.detach(), tgt.detach(), pred.detach())
 
         self.log(
             "val_loss",
@@ -115,17 +126,17 @@ class ForecastModule(L.LightningModule):
         if scheduler_name == "cosine":
             scheduler = CosineAnnealingLR(
                             optimizer,
-                            T_max=self.trainer.max_epochs * len(self.train_dataloader()[0]),
+                            T_max=self.T_max,
                             eta_min=scheduler_params["eta_min"],
-                            last_epoch=self.current_epoch * len(self.train_dataloader()[0]) - 1
+                            last_epoch=self.trainer.global_step - 1
                         )
         if scheduler_name == "cosine_warmup":
             scheduler = CosineWarmupLR(
                             optimizer,
                             warmup_iters=scheduler_params["warmup_iters"],
-                            max_iters=self.trainer.max_epochs * len(self.train_dataloader()[0]),
+                            max_iters=self.T_max,
                             eta_min=scheduler_params["eta_min"],
-                            last_epoch=self.current_epoch * len(self.train_dataloader()[0]) - 1
+                            last_epoch=self.trainer.global_step - 1
                         )
         else:
             raise ValueError(f"Scheduler {scheduler_name} not supported")
@@ -141,47 +152,49 @@ class ForecastModule(L.LightningModule):
 
     def on_validation_epoch_end(self):
         fields = self.data_cfg["fields"]
-        inputs, targets, predictions = random.choice(self.validation_outputs)
-
-        input_sample = inputs[0]  # T, C, H, W
+        if self.validation_sample is None:
+            return
+        inputs, targets, predictions = self.validation_sample
+        
+        #input_sample = inputs[0]  # T, C, H, W
         target_sample = targets[0] # T, C, H, W
         pred_sample = predictions[0] # T, C, H, W
 
         if self.log_wandb:
             try:
-                sdf_idx = fields.index("sdf")
-                input_sdfs = wandb_sdf_plotter(input_sample[:,sdf_idx,:,:])
+                sdf_idx = fields.index("dfun")
+                #input_sdfs = wandb_sdf_plotter(input_sample[:,sdf_idx,:,:])
                 target_sdfs = wandb_sdf_plotter(target_sample[:,sdf_idx,:,:])
                 pred_sdfs = wandb_sdf_plotter(pred_sample[:,sdf_idx,:,:])
                 wandb.log({
-                    "Input SDF": wandb.Image(input_sdfs),
-                    "Target SDF": wandb.Image(target_sdfs),
-                    "Prediction SDF": wandb.Image(pred_sdfs)
+                    #"Input SDF": wandb.Image(input_sdfs),
+                    "Target SDF": wandb.Image(target_sdfs, caption=f"Epc {self.current_epoch}"),
+                    "Prediction SDF": wandb.Image(pred_sdfs, caption=f"Epc {self.current_epoch}"),
                 })
 
             except ValueError:
                 pass
             try:
                 temp_idx = fields.index("temperature")
-                input_temps = wandb_temp_plotter(input_sample[:,temp_idx,:,:])
+                #input_temps = wandb_temp_plotter(input_sample[:,temp_idx,:,:])
                 target_temps = wandb_temp_plotter(target_sample[:,temp_idx,:,:])
                 pred_temps = wandb_temp_plotter(pred_sample[:,temp_idx,:,:])
                 wandb.log({
-                    "Input Temperature": wandb.Image(input_temps),
-                    "Target Temperature": wandb.Image(target_temps),
-                    "Prediction Temperature": wandb.Image(pred_temps)
+                    #"Input Temperature": wandb.Image(input_temps),
+                    "Target Temp": wandb.Image(target_temps, caption=f"Epc {self.current_epoch}"),
+                    "Prediction Temp": wandb.Image(pred_temps, caption=f"Epc {self.current_epoch}")
                 })
             except ValueError:
                 pass
             try:
                 velx_idx = fields.index("velx")
                 vely_idx = fields.index("vely")
-                input_vel_field = torch.stack([
-                                        input_sample[:,velx_idx,:,:],
-                                        input_sample[:,vely_idx,:,:]
-                                    ],
-                                    dim=1
-                                )
+                #input_vel_field = torch.stack([
+                #                        input_sample[:,velx_idx,:,:],
+                #                        input_sample[:,vely_idx,:,:]
+                #                    ],
+                #                    dim=1
+                #                )
                 target_vel_field = torch.stack([
                                         target_sample[:,velx_idx,:,:],
                                         target_sample[:,vely_idx,:,:]
@@ -194,13 +207,13 @@ class ForecastModule(L.LightningModule):
                                     ],
                                     dim=1
                                 )
-                input_vels = wandb_vel_plotter(input_vel_field)
+                #input_vels = wandb_vel_plotter(input_vel_field)
                 target_vels = wandb_vel_plotter(target_vel_field)
                 pred_vels = wandb_vel_plotter(pred_vel_field)
                 wandb.log({
-                    "Input Velocity": wandb.Image(input_vels),
-                    "Target Velocity": wandb.Image(target_vels),
-                    "Prediction Velocity": wandb.Image(pred_vels)
+                    #"Input Velocity": wandb.Image(input_vels),
+                    "Target Vel": wandb.Image(target_vels, caption=f"Epc {self.current_epoch}"),
+                    "Prediction Vel": wandb.Image(pred_vels, caption=f"Epc {self.current_epoch}")
                 })
             except ValueError:
                 pass

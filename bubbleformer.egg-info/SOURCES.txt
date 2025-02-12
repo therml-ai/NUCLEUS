@@ -1,0 +1,10 @@
+LICENSE
+README.md
+pyproject.toml
+setup.py
+bubbleformer/__init__.py
+bubbleformer/modules.py
+bubbleformer.egg-info/PKG-INFO
+bubbleformer.egg-info/SOURCES.txt
+bubbleformer.egg-info/dependency_links.txt
+bubbleformer.egg-info/top_level.txt

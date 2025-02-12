@@ -2,7 +2,7 @@ log_dir: /pub/sheikhh1/bubbleformer_logs
 seed: 42
 
 distributed: True
-devices: 4
+devices: 1
 
 max_epochs: 100
 batch_size: 4

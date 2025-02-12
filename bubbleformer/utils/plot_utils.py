@@ -176,7 +176,7 @@ def wandb_sdf_plotter(sdf: torch.Tensor) -> plt.Figure:
     """
     Return the plot of a single T x H x W SDF tensor
     """
-    fig, axes = plt.subplots(sdf.shape[0], 1, figsize=(3 * sdf.shape[0], 6), ncols=sdf.shape[0])
+    fig, axes = plt.subplots(1, sdf.shape[0], figsize=(3 * sdf.shape[0], 6))
     for i, ax in enumerate(axes):
         dfun = sdf[i].cpu().numpy()
         dfun[dfun>0] = 0
@@ -193,26 +193,26 @@ def wandb_sdf_plotter(sdf: torch.Tensor) -> plt.Figure:
         ax.imshow(overlay, alpha=1, origin="lower")
         ax.axis("off")
         ax.set_title(f"SDF {i}")
-    fig.colorbar(img, fraction=0.04, pad=0.05, orientation="horizontal")
+    fig.colorbar(img, fraction=0.04, pad=0.05)
     return fig
 
 def wandb_temp_plotter(temp: torch.Tensor) -> plt.Figure:
     """
     Return the plot of a single T x H x W temperature tensor
     """
-    fig, axes = plt.subplots(temp.shape[0], 1, figsize=(3 * temp.shape[0], 6), ncols=temp.shape[0])
+    fig, axes = plt.subplots(1, temp.shape[0], figsize=(3 * temp.shape[0], 6))
     for i, ax in enumerate(axes):
         img = ax.imshow(temp[i].cpu().numpy(), cmap="turbo", origin="lower")
         ax.axis("off")
         ax.set_title(f"Temp {i}")
-    fig.colorbar(img, fraction=0.04, pad=0.05, orientation="horizontal")
+    fig.colorbar(img, fraction=0.04, pad=0.05)
     return fig
 
 def wandb_vel_plotter(vel: torch.Tensor) -> plt.Figure:
     """
     Return the plot of a single T x 2 x H x W velocity tensor
     """
-    fig, axes = plt.subplots(vel.shape[0], 1, figsize=(3 * vel.shape[0], 6), ncols=vel.shape[0])
+    fig, axes = plt.subplots(1, vel.shape[0], figsize=(3 * vel.shape[0], 6))
     for i, ax in enumerate(axes):
         velx = vel[i, 0].cpu().numpy()
         vely = vel[i, 1].cpu().numpy()
@@ -224,5 +224,5 @@ def wandb_vel_plotter(vel: torch.Tensor) -> plt.Figure:
         ax.streamplot(X, Y, np.flipud(velx), -np.flipud(vely), density=0.75, color="white")
         ax.axis("off")
         ax.set_title(f"Vel {i}")
-    fig.colorbar(img, fraction=0.04, pad=0.05, orientation="horizontal")
+    fig.colorbar(img, fraction=0.04, pad=0.05)
     return fig
