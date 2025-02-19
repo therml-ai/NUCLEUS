@@ -35,6 +35,6 @@ def get_model(name: str, **config: Any) -> nn.Module:
     try:
         fn = MODELS[name]
     except KeyError as exc:
-        raise KeyError(f"Model {name} not found") from exc
+        raise KeyError(f"Model {name} not found. Available Models: {MODELS.keys()}") from exc
 
     return fn(**config)

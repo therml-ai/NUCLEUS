@@ -3,8 +3,8 @@ import torch.nn as nn
 import numpy as np
 from einops import rearrange
 
-from ._api import register_model
 from bubbleformer.layers import AxialAttentionBlock, TemporalAttentionBlock, HMLPEmbed, HMLPDebed
+from ._api import register_model
 
 __all__ = ["AViT"]
 
@@ -64,7 +64,6 @@ class AViT(nn.Module):
         processor_blocks (int): Number of processor blocks
         drop_path (float): Dropout rate
     """
-
     def __init__(
         self,
         fields: int = 3,
