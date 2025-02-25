@@ -1,0 +1,7 @@
+name: avit_spatial_only
+params:
+  patch_size: 16
+  embed_dim: 384
+  processor_blocks: 12
+  num_heads: 6
+  drop_path: 0.2

@@ -45,17 +45,16 @@ class ForecastModule(L.LightningModule):
             self.normalization_constants = normalization_constants
         self.log_wandb = log_wandb
 
+        self.criterion = LpLoss(d=2, p=2, reduce_dims=[0,1,2], reductions=["mean", "mean", "sum"])
         self.model_cfg["params"]["fields"] = len(self.data_cfg["fields"])
+        self.model = get_model(self.model_cfg["name"], **self.model_cfg["params"])
+
         self.model_cfg["params"]["time_window"] = self.data_cfg["time_window"]
         self.save_hyperparameters()
-
-        self.criterion = LpLoss(d=2, p=2, reduce_dims=[0,1,2], reductions=["mean", "mean", "sum"])
-        self.model = get_model(self.model_cfg["name"], **self.model_cfg["params"])
         self.t_max = None
         self.validation_sample = None
         self.train_start_time = None
         self.val_start_time = None
-        # print(self.model)
 
     def setup(
         self,
