@@ -47,9 +47,9 @@ class ForecastModule(L.LightningModule):
 
         self.criterion = LpLoss(d=2, p=2, reduce_dims=[0,1,2], reductions=["mean", "mean", "sum"])
         self.model_cfg["params"]["fields"] = len(self.data_cfg["fields"])
+        self.model_cfg["params"]["time_window"] = self.data_cfg["time_window"]
         self.model = get_model(self.model_cfg["name"], **self.model_cfg["params"])
 
-        self.model_cfg["params"]["time_window"] = self.data_cfg["time_window"]
         self.save_hyperparameters()
         self.t_max = None
         self.validation_sample = None
@@ -168,7 +168,7 @@ class ForecastModule(L.LightningModule):
         self.train_start_time = time.time()
 
     def on_train_epoch_end(self):
-        if self.train_start_time is not None: # when resuming from middle of epoch, variable stays none
+        if self.train_start_time is not None: # when resuming from middle of epoch, var is None
             train_time = time.time() - self.train_start_time
             if self.log_wandb and self.trainer.is_global_zero:
                 wandb.log({"train_epoch_time": train_time, "epoch": self.current_epoch})

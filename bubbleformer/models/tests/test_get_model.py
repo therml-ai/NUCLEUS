@@ -11,6 +11,7 @@ def test_avit(fields, patch_size, embed_dim):
     """
     model_params = {
         "fields": fields,
+        "time_window": 3,
         "patch_size": patch_size,
         "embed_dim": embed_dim,
         "num_heads": 4,
@@ -33,6 +34,7 @@ def test_avit_spatial(fields, patch_size, embed_dim):
     """
     model_params = {
         "fields": fields,
+        "time_window": 3,
         "patch_size": patch_size,
         "embed_dim": embed_dim,
         "num_heads": 4,
