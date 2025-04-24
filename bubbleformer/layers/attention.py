@@ -7,10 +7,13 @@ from timm.layers import DropPath
 from bubbleformer.layers import GeluMLP, RelativePositionBias, ContinuousPositionBias1D
 
 
-class TemporalAttentionBlock(nn.Module):
+class AttentionBlock(nn.Module):
     """
-    Temporal Attention Block
-    Takes in tensors of shape (B, T, C, H, W) and applies self-attention across time dimension
+    Attention Block
+    Takes in tensors of shape (B, n, emb, H, W)
+    where n is the token sequence, emb is the embedding dimension
+    H and W are the spatial tokens
+    and applies self-attention across time dimension
     Args:
         embed_dim (int): Number of features in the input tensor
         num_heads (int): Number of attention heads
@@ -51,21 +54,21 @@ class TemporalAttentionBlock(nn.Module):
     def forward(self, x):
         """
         Args:
-            x (torch.Tensor): Input tensor of shape (B, T, C, H, W)
+            x (torch.Tensor): Input tensor of shape (B, N, emb, H, W)
         Returns:
-            torch.Tensor: Output tensor of shape (B, T, C, H, W)
+            torch.Tensor: Output tensor of shape (B, N, emb, H, W)
         """
-        _, t, _, h, w = x.shape
+        _, n, _, h, w = x.shape
         inp = x.clone()
         # Rearrange and prenorm
-        x = rearrange(x, "b t c h w -> (b t) c h w")
+        x = rearrange(x, "b n emb h w -> (b n) emb h w")
         x = self.norm1(x)
         x = self.input_head(x)  # Q, K, V projections
         # Rearrange for attention
-        x = rearrange(x, "(b t) (he c) h w ->  (b h w) he t c", t=t, he=self.num_heads)
+        x = rearrange(x, "(b n) (he emb) h w ->  (b h w) he n emb", n=n, he=self.num_heads)
         q, k, v = x.tensor_split(3, dim=-1)
         q, k = self.qnorm(q), self.knorm(k)
-        rel_pos_bias = self.rel_pos_bias(t, t)
+        rel_pos_bias = self.rel_pos_bias(n, n)
         if rel_pos_bias is not None:
             # pylint: disable=not-callable
             x = F.scaled_dot_product_attention(
@@ -82,10 +85,10 @@ class TemporalAttentionBlock(nn.Module):
                 value=v.contiguous()
             )
         # Rearrange after attention
-        x = rearrange(x, "(b h w) he t c -> (b t) (he c) h w", h=h, w=w)
+        x = rearrange(x, "(b h w) he n emb -> (b n) (he emb) h w", h=h, w=w)
         x = self.norm2(x)
         x = self.output_head(x)
-        x = rearrange(x, "(b t) c h w -> b t c h w", t=t)
+        x = rearrange(x, "(b n) emb h w -> b n emb h w", n=n)
         output = self.drop_path(x * self.gamma[None, None, :, None, None]) + inp
         return output
 
@@ -145,23 +148,23 @@ class AxialAttentionBlock(nn.Module):
     def forward(self, x):
         """
         Args:
-            x (torch.Tensor): Input tensor of shape (BT, C, H, W)
+            x (torch.Tensor): Input tensor of shape (B, emb, H, W)
         Returns:
-            torch.Tensor: Output tensor of shape (BT, C, H, W)
+            torch.Tensor: Output tensor of shape (B, emb, H, W)
         """
         _, _, h, w = x.shape
         inp = x.clone()
         x = self.norm1(x)
         x = self.input_head(x)
 
-        x = rearrange(x, "bt (he c) h w ->  bt he h w c", he=self.num_heads)
+        x = rearrange(x, "b (he emb) h w ->  b he h w emb", he=self.num_heads)
         q, k, v = x.tensor_split(3, dim=-1)
         q, k = self.qnorm(q), self.knorm(k)
 
         # Do attention with current q, k, v matrices along each spatial axis then average results
         # X direction attention
         qx, kx, vx = map(
-            lambda x: rearrange(x, "bt he h w c ->  (bt h) he w c"), [q, k, v]
+            lambda x: rearrange(x, "b he h w emb ->  (b h) he w emb"), [q, k, v]
         )
         rel_pos_bias_x = self.rel_pos_bias(w, w)
         if rel_pos_bias_x is not None:
@@ -179,11 +182,11 @@ class AxialAttentionBlock(nn.Module):
                 key=kx.contiguous(),
                 value=vx.contiguous(),
             )
-        xx = rearrange(xx, "(bt h) he w c -> bt (he c) h w", h=h)
+        xx = rearrange(xx, "(b h) he w emb -> b (he emb) h w", h=h)
 
         # Y direction attention
         qy, ky, vy = map(
-            lambda x: rearrange(x, "bt he h w c ->  (bt w) he h c"), [q, k, v]
+            lambda x: rearrange(x, "b he h w emb ->  (b w) he h emb"), [q, k, v]
         )
         rel_pos_bias_y = self.rel_pos_bias(h, h)
         if rel_pos_bias_y is not None:
@@ -201,7 +204,7 @@ class AxialAttentionBlock(nn.Module):
                 key=ky.contiguous(),
                 value=vy.contiguous(),
             )
-        xy = rearrange(xy, "(bt w) he h c -> bt (he c) h w", w=w)
+        xy = rearrange(xy, "(b w) he h emb -> b (he emb) h w", w=w)
 
         # Combine
         x = (xx + xy) / 2
@@ -211,9 +214,9 @@ class AxialAttentionBlock(nn.Module):
 
         # MLP
         inp = x.clone()
-        x = rearrange(x, "bt c h w -> bt h w c")
+        x = rearrange(x, "b emb h w -> b h w emb")
         x = self.mlp(x)
-        x = rearrange(x, "bt h w c -> bt c h w")
+        x = rearrange(x, "b h w emb -> b emb h w")
         x = self.mlp_norm(x)
         out = inp + self.drop_path(self.gamma_mlp[None, :, None, None] * x)
 

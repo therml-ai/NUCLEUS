@@ -1,12 +1,11 @@
-"""
-Plotting utilities for ML predictions
-
-Author: Sheikh Md Shakeel Hassan
-"""
 import os
-import cv2 # pylint: disable=import-error
 import torch
+from collections import OrderedDict
+from bubbleformer.models import get_model
+from bubbleformer.data import BubblemlForecast
+from bubbleformer.utils.losses import LpLoss
 import matplotlib.pyplot as plt
+import cv2
 import numpy as np
 
 def plot_bubbleml(
@@ -97,8 +96,8 @@ def plot_bubbleml(
         velmag_err = np.abs(velmag_target - velmag_pred)/(np.abs(velmag_target) + 1.0e-8)
 
         # Velocity Streamlines
-        x = np.arange(2, velmag_target.shape[1]-2, 1)
-        y = np.arange(2, velmag_target.shape[0]-2, 1)
+        x = np.arange(10, velmag_target.shape[1]-10, 1)
+        y = np.arange(10, velmag_target.shape[0]-10, 1)
         X,Y = np.meshgrid(x,y)
         velx_pred[dfun_target==0] = 0
         vely_pred[dfun_target==0] = 0
@@ -122,7 +121,7 @@ def plot_bubbleml(
 
         im_02 = axarr[0][2].imshow(np.flipud(velmag_target), vmin=vel_min, vmax=vel_max, cmap="turbo")
         #im_02 = axarr[0][2].imshow(np.flipud(velmag_target), cmap="turbo")
-        axarr[0][2].streamplot(X, Y, np.flipud(velx_target)[2:-2, 2:-2], -np.flipud(vely_target)[2:-2, 2:-2], density=0.75, color="white")
+        axarr[0][2].streamplot(X, Y, np.flipud(velx_target)[10:-10, 10:-10], -np.flipud(vely_target)[10:-10, 10:-10], density=0.75, color="white")
         #axarr[0][2].imshow(np.flipud(target_overlay), alpha=1)
         axarr[0][2].axis("off")
         plt.colorbar(im_02, ax=axarr[0][2], fraction=0.04, pad=0.05)
@@ -143,7 +142,7 @@ def plot_bubbleml(
 
         im_12 = axarr[1][2].imshow(np.flipud(velmag_pred), vmin=vel_min, vmax=vel_max, cmap="turbo")
         #im_12 = axarr[1][2].imshow(np.flipud(velmag_pred), cmap="turbo")
-        axarr[1][2].streamplot(X, Y, np.flipud(velx_pred)[2:-2, 2:-2], -np.flipud(vely_pred)[2:-2, 2:-2], density=0.75, color="white")
+        axarr[1][2].streamplot(X, Y, np.flipud(velx_pred)[10:-10, 10:-10], -np.flipud(vely_pred)[10:-10, 10:-10], density=0.75, color="white")
         #axarr[1][2].imshow(np.flipud(pred_overlay), alpha=1)
         axarr[1][2].axis("off")
         plt.colorbar(im_12, ax=axarr[1][2], fraction=0.04, pad=0.05)
@@ -172,57 +171,74 @@ def plot_bubbleml(
         if i % 25 == 0:
             print(f"{i} files done")
 
-def wandb_sdf_plotter(sdf: torch.Tensor) -> plt.Figure:
-    """
-    Return the plot of a single T x H x W SDF tensor
-    """
-    fig, axes = plt.subplots(1, sdf.shape[0], figsize=(3 * sdf.shape[0], 6))
-    for i, ax in enumerate(axes):
-        dfun = sdf[i].cpu().numpy()
-        dfun[dfun>0] = 0
-        dfun[dfun<0] = 255
-        dfun = dfun.astype(np.uint8)
-        edge_map = cv2.Canny(dfun, 0, 255)
-        kernel = np.ones((3,3),np.uint8)
-        edge_map = cv2.dilate(edge_map, kernel, iterations=1)
-        mask = np.where(edge_map > 0, 0, 255)
-        alpha = np.where(mask > 0, 0, 255)
-        overlay = np.dstack((mask, mask, mask, alpha))
 
-        img = ax.imshow(sdf[i].cpu().numpy(), cmap="Blues", origin="lower")
-        ax.imshow(overlay, alpha=1, origin="lower")
-        ax.axis("off")
-        ax.set_title(f"SDF {i}")
-    fig.colorbar(img, fraction=0.04, pad=0.05)
-    return fig
 
-def wandb_temp_plotter(temp: torch.Tensor) -> plt.Figure:
-    """
-    Return the plot of a single T x H x W temperature tensor
-    """
-    fig, axes = plt.subplots(1, temp.shape[0], figsize=(3 * temp.shape[0], 6))
-    for i, ax in enumerate(axes):
-        img = ax.imshow(temp[i].cpu().numpy(), cmap="turbo", origin="lower")
-        ax.axis("off")
-        ax.set_title(f"Temp {i}")
-    fig.colorbar(img, fraction=0.04, pad=0.05)
-    return fig
+test_path = ["/share/crsp/lab/ai4ts/share/BubbleML_f32/PoolBoiling-Saturated-FC72-2D-0.1/Twall-92.hdf5"]
+test_dataset = BubblemlForecast(filenames=test_path, fields=["dfun", "temperature", "velx", "vely"], norm="none", time_window=5, start_time=95)
 
-def wandb_vel_plotter(vel: torch.Tensor) -> plt.Figure:
-    """
-    Return the plot of a single T x 2 x H x W velocity tensor
-    """
-    fig, axes = plt.subplots(1, vel.shape[0], figsize=(3 * vel.shape[0], 6))
-    for i, ax in enumerate(axes):
-        velx = vel[i, 0].cpu().numpy()
-        vely = vel[i, 1].cpu().numpy()
-        velmag = np.sqrt(velx**2 + vely**2)
-        x = np.arange(0, velmag.shape[1], 1)
-        y = np.arange(0, velmag.shape[0], 1)
-        X,Y = np.meshgrid(x,y)
-        img = ax.imshow(np.flipud(velmag), cmap="turbo")
-        ax.streamplot(X, Y, np.flipud(velx), -np.flipud(vely), density=0.75, color="white")
-        ax.axis("off")
-        ax.set_title(f"Vel {i}")
-    fig.colorbar(img, fraction=0.04, pad=0.05)
-    return fig
+model_name = "avit"
+model_kwargs = {
+            "fields": 4,
+            "time_window": 5,
+            "patch_size": 16,
+            "embed_dim": 384,
+            "processor_blocks": 12,
+            "num_heads": 6,
+            "drop_path": 0.2,
+            }
+
+model = get_model(model_name, **model_kwargs)
+model = model.cuda()
+
+weights_path = "/pub/sheikhh1/bubbleformer_logs/avit_poolboiling_saturated_36223568/ckpt_final.ckpt"
+model_data = torch.load(weights_path, weights_only=False)
+
+diff_term, div_term = model_data['hyper_parameters']['normalization_constants']
+diff_term = torch.tensor(diff_term)
+div_term = torch.tensor(div_term)
+weight_state_dict = OrderedDict()
+for key, val in model_data["state_dict"].items():
+    name = key[6:]
+    weight_state_dict[name] = val
+del model_data
+
+model.load_state_dict(weight_state_dict)
+
+_, _ = test_dataset.normalize(diff_term, div_term)
+criterion = LpLoss(d=2, p=2, reduce_dims=[0,1], reductions=["mean", "mean"])
+model.eval()
+start_time = test_dataset.start_time
+skip_itrs = test_dataset.time_window
+model_preds = []
+model_targets = []
+timesteps = []
+
+for itr in range(0, 500, skip_itrs):
+    inp, tgt = test_dataset[itr]
+    print(f"Autoreg pred {itr}, inp tw [{start_time+itr}, {start_time+itr+skip_itrs}], tgt tw [{start_time+itr+skip_itrs}, {start_time+itr+2*skip_itrs}]")
+    if len(model_preds) > 0:
+        inp = model_preds[-1] # T, C, H, W
+    inp = inp.cuda().float().unsqueeze(0)
+    pred = model(inp)
+    pred = pred.squeeze(0).detach().cpu()
+    tgt = tgt.detach().cpu()
+
+    model_preds.append(pred)
+    model_targets.append(tgt)
+    timesteps.append(torch.arange(start_time+itr+skip_itrs, start_time+itr+2*skip_itrs))
+    print(criterion(pred, tgt))
+
+model_preds = torch.cat(model_preds, dim=0)         # T, C, H, W
+model_targets = torch.cat(model_targets, dim=0)     # T, C, H, W
+timesteps = torch.cat(timesteps, dim=0)             # T,
+num_var = len(test_dataset.fields)                  # C
+
+preds = model_preds * div_term.view(1, num_var, 1, 1) + diff_term.view(1, num_var, 1, 1)     # denormalize
+targets = model_targets * div_term.view(1, num_var, 1, 1) + diff_term.view(1, num_var, 1, 1) # denormalize
+
+save_dir = "/pub/sheikhh1/bubbleformer_logs/avit_poolboiling_saturated_36223568/epoch_189_outputs/sat_92"
+os.makedirs(save_dir, exist_ok=True)
+save_path = os.path.join(save_dir, "predictions.pt")
+torch.save({"preds": preds, "targets": targets, "timesteps": timesteps}, save_path)
+plot_bubbleml(preds, targets, timesteps, save_dir)
+

@@ -177,8 +177,11 @@ class ForecastModule(L.LightningModule):
     def on_validation_epoch_start(self):
         self.val_start_time = time.time()
         if self.log_wandb and self.trainer.is_global_zero:
-            train_loss = self.trainer.callback_metrics["train_loss"].item()
-            wandb.log({"train_loss_epoch": train_loss, "epoch": self.current_epoch})
+            try:
+                train_loss = self.trainer.callback_metrics["train_loss"].item()
+                wandb.log({"train_loss_epoch": train_loss, "epoch": self.current_epoch})
+            except:
+                pass
 
     def on_validation_epoch_end(self):
         if self.val_start_time is not None:
@@ -246,5 +249,8 @@ class ForecastModule(L.LightningModule):
         self.validation_outputs = []
 
         if self.log_wandb and self.trainer.is_global_zero:
-            val_loss = self.trainer.callback_metrics["val_loss"].item()
-            wandb.log({"val_loss_epoch": val_loss, "epoch": self.current_epoch})
+            try:
+                val_loss = self.trainer.callback_metrics["val_loss"].item()
+                wandb.log({"val_loss_epoch": val_loss, "epoch": self.current_epoch})
+            except:
+                pass

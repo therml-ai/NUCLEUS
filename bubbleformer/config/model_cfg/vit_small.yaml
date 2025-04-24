@@ -1,4 +1,4 @@
-name: avit_temporal_only
+name: vit
 params:
   patch_size: 16
   embed_dim: 384

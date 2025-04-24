@@ -6,19 +6,19 @@ nodes:
 devices:
 
 max_epochs:
-batch_size: 4
+batch_size: 2
 
 checkpoint_path:
 
 use_wandb: True
 wandb_tags:
-  - baseline
+  - time_window-10
   - relative_l2_loss
-  - AViT-TemporalAttnOnly
-  - PB-Saturated
+  - AViT-Defaultt
+  - PB-Subcooled
 defaults:
   - _self_
-  - data_cfg: poolboiling_saturated
-  - model_cfg: avit_temporal_small
+  - data_cfg: poolboiling_subcooled
+  - model_cfg: avit_small
   - optim_cfg: adamw
   - scheduler_cfg: cosine_warmup
