@@ -177,7 +177,7 @@ def main(cfg: DictConfig) -> None:
         plugins=[SLURMEnvironment(requeue_signal=signal.SIGHUP)],
         enable_model_summary=True,
         # profiler=profiler,
-        # limit_train_batches=500,
+        # limit_train_batches=50,
         limit_val_batches=50,
         num_sanity_val_steps=0,
         callbacks=[ModelSummary(max_depth=-1), PreemptionCheckpointCallback(preempt_ckpt_path)]

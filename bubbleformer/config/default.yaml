@@ -18,7 +18,7 @@ wandb_tags:
   - Lion optimizer
 defaults:
   - _self_
-  - data_cfg: singlebubble
+  - data_cfg: bubbleml_subcooled
   - model_cfg: avit_small
   - optim_cfg: lion
   - scheduler_cfg: cosine_warmup

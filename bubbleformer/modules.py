@@ -194,7 +194,7 @@ class ForecastModule(L.LightningModule):
             if self.log_wandb and self.trainer.is_global_zero:
                 wandb.log({"val_epoch_time": val_time, "epoch": self.current_epoch})
 
-        fields = self.data_cfg["fields"]
+        fields = self.data_cfg["output_fields"]
         if self.validation_sample is None:
             return
         _, targets, predictions = self.validation_sample

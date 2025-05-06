@@ -75,14 +75,16 @@ class BubblemlForecast(Dataset):
             div_terms = {k:[] for k in self.fields}
             for field in self.fields:
                 for _, h5_file in enumerate(self.data):
-                    field_data = h5_file[field][...]
                     if self.norm == "std":
+                        field_data = h5_file[field][...]
                         diff_terms[field].append(field_data.mean())
                         div_terms[field].append(field_data.std())
                     elif self.norm == "minmax":
+                        field_data = h5_file[field][...]
                         diff_terms[field].append(field_data.min())
                         div_terms[field].append(field_data.max() - field_data.min())
                     elif self.norm == "tanh":
+                        field_data = h5_file[field][...]
                         diff_terms[field].append(
                             (field_data.max() + field_data.min()) / 2.0
                         )
@@ -150,5 +152,5 @@ class BubblemlForecast(Dataset):
         inp_data = torch.stack(inp_data)                                   # (in_C, T, H, W)
         out_data = torch.stack(out_data)                                   # (out_C, T, H, W)
 
-        return inp_data.permute(1, 0, 2, 3), out_data.permute(1, 0, 2, 3)  # (T, C, H, W)
+        return inp_data.float().permute(1, 0, 2, 3), out_data.float().permute(1, 0, 2, 3)  # (T, C, H, W)
    
