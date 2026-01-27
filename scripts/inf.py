@@ -7,9 +7,12 @@ import hydra
 from omegaconf import DictConfig
 from bubbleformer.test import run_test, TestResults
 from bubbleformer.plot.plotting import plot_rollout
+from bubbleformer.utils.set_fp32_precision import set_fp32_precision
 
 @hydra.main(version_base=None, config_path="../bubbleformer/config", config_name="default")
-def main(cfg: DictConfig):    
+def main(cfg: DictConfig):
+    set_fp32_precision()
+    
     model_name = cfg.model_cfg.name
     model_kwargs = {
         "input_fields": 4,

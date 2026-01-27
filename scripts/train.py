@@ -18,6 +18,7 @@ from lightning.pytorch.plugins.environments import SLURMEnvironment
 from bubbleformer.data.batching import collate
 from bubbleformer.data import BubbleForecast, DownsampledBubbleForecast
 from bubbleformer.moe_modules import MoEForecastModule, MoEConditionedForecastModule
+from bubbleformer.utils.set_fp32_precision import set_fp32_precision
 
 def is_leader_process():
     """
@@ -67,7 +68,7 @@ class PreemptionCheckpointCallback(Callback):
 @hydra.main(version_base=None, config_path="../bubbleformer/config", config_name="default")
 def main(cfg: DictConfig) -> None:
     seed_everything(cfg.seed)
-    torch.set_float32_matmul_precision("high")
+    set_fp32_precision()
 
     params = {}
     params["nodes"] = cfg.nodes
