@@ -39,10 +39,11 @@ class HMLPEmbed(nn.Module):
                     out_channels=conv_out,
                     kernel_size=2,
                     stride=2,
-                    bias=False
+                    bias=False,
+                    dtype=torch.bfloat16
                 )
             )
-            layers.append(nn.InstanceNorm2d(conv_out, affine=True))
+            layers.append(nn.InstanceNorm2d(conv_out, affine=True, dtype=torch.bfloat16))
             if not is_last:
                 layers.append(nn.GELU())
             conv_in = conv_out
@@ -55,8 +56,8 @@ class HMLPEmbed(nn.Module):
         Returns:
             torch.Tensor: Output tensor of shape (B, Emb, H_patches, W_patches)
         """
-        x = self.in_proj(x)
-        return x
+        x = self.in_proj(x.to(torch.bfloat16))
+        return x.to(torch.float32)
 
 @torch.compile(fullgraph=True)
 class HMLPDebed(nn.Module):
@@ -95,11 +96,12 @@ class HMLPDebed(nn.Module):
                     out_channels=conv_out,
                     kernel_size=2,
                     stride=2,
-                    bias=False
+                    bias=False,
+                    dtype=torch.bfloat16
                 )
             )
             if not is_last:
-                layers.append(nn.InstanceNorm2d(conv_out, affine=True))
+                layers.append(nn.InstanceNorm2d(conv_out, affine=True, dtype=torch.bfloat16))
                 layers.append(nn.GELU())
             conv_in = conv_out
 
@@ -112,4 +114,5 @@ class HMLPDebed(nn.Module):
         Returns:
             torch.Tensor: Output tensor of shape (B, C, H, W)
         """
-        return self.out_proj(x)
+        x = self.out_proj(x.to(torch.bfloat16))
+        return x.to(torch.float32)
