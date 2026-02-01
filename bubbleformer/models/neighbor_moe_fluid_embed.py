@@ -74,7 +74,7 @@ class NeighborMoEFluidEmbed(nn.Module):
         input = x.clone()
         assert input.dtype == torch.float32
                
-        # embed the fluid params as a (B, 1, 1, 1, embed_dim) tensor
+        # embed the fluid params as a (B, 1, 1, 1, embed_dim) tensor that can be added to each channel.
         fluid_param_embedding = self.fluid_param_embed(batch.fluid_params_dict)[:, None, None, None, :]
 
         # Encode
@@ -97,9 +97,8 @@ class NeighborMoEFluidEmbed(nn.Module):
         for idx, blk in enumerate(self.blocks):
             with record_function(f"block_{idx}"):
                x, moe_output = blk(x)
+               x += fluid_param_embedding
                moe_outputs.append(moe_output)
-
-        x += fluid_param_embedding
         
         x = rearrange(x, "b t h w c -> b t c h w").contiguous()
         
