@@ -95,7 +95,7 @@ def main(cfg: DictConfig) -> None:
         preempt_ckpt_path = params["log_dir"] + "/hpc_ckpt_" + str(preempt_ckpt_num) + ".ckpt"
 
     logger = CSVLogger(save_dir=params["log_dir"])
-
+    
     train_dataset = DownsampledBubbleForecast(
                 filenames=cfg.data_cfg.train_paths,
                 input_fields=cfg.data_cfg.input_fields,
@@ -166,7 +166,6 @@ def main(cfg: DictConfig) -> None:
         strategy="auto",
         max_epochs=cfg.max_epochs,
         #max_steps=30, # NOTE: limited for profiling
-        limit_val_batches=0.2,
         logger=logger,
         default_root_dir=params["log_dir"],
         plugins=[SLURMEnvironment(requeue_signal=signal.SIGHUP)],
