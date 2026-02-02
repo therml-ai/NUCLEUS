@@ -70,12 +70,15 @@ class NeighborMoEFluidEmbed(nn.Module):
         """
         x = batch.input
         B, T, _, _, _ = x.shape
-                
+
         input = x.clone()
         assert input.dtype == torch.float32
                
-        # embed the fluid params as a (B, 1, 1, 1, embed_dim) tensor that can be added to each channel.
-        fluid_param_embedding = self.fluid_param_embed(batch.fluid_params_dict)[:, None, None, None, :]
+        # embed the fluid params as a (B, 1, 1, 1, embed_dim) tensor that can be applied to each channel.
+        # These embeddings a used as linear modulations of the internal activations.
+        fluid_gamma_embedding, fluid_beta_embedding = self.fluid_param_embed(batch.fluid_params_dict)
+        fluid_gamma_embedding = fluid_gamma_embedding[:, None, None, None, :]
+        fluid_beta_embedding = fluid_beta_embedding[:, None, None, None, :]
 
         # Encode
         with record_function("encode"):
@@ -90,14 +93,14 @@ class NeighborMoEFluidEmbed(nn.Module):
         # I think conv's do support NHWC layout.
         x = rearrange(x, "b t c h w -> b t h w c").contiguous()
 
-        x += fluid_param_embedding
+        x = x * fluid_gamma_embedding + fluid_beta_embedding
 
         # Attention blocks, tracking the MoE output for the routing losses
         moe_outputs = []
         for idx, blk in enumerate(self.blocks):
             with record_function(f"block_{idx}"):
                x, moe_output = blk(x)
-               x += fluid_param_embedding
+               x = x * fluid_gamma_embedding + fluid_beta_embedding
                moe_outputs.append(moe_output)
         
         x = rearrange(x, "b t h w c -> b t c h w").contiguous()

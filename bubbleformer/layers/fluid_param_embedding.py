@@ -28,20 +28,12 @@ class FluidParamEmbedding(nn.Module):
         ]
         
         # Each fluid param has a unique base embedding vector
-        self.base_embedding = nn.Embedding(len(self.fluid_params), embed_dim)
+        self.base_embedding = nn.Embedding(len(self.fluid_params), 2 * embed_dim)
 
         # Based on the value of the fluid param, we modulate its base embedding.
-        self.film_mlp = FiLMMLP(1, embed_dim)
-        
-        intermediate_dim = 2 * embed_dim
-        self.mlp = nn.Sequential(
-            nn.Linear(embed_dim, intermediate_dim),
-            nn.GELU(),
-            nn.LayerNorm(intermediate_dim),
-            nn.Linear(intermediate_dim, embed_dim),
-        )
+        self.film_mlp = FiLMMLP(1, 2 * embed_dim)
 
-    def unnest_dict(self, fluid_params_dict: Dict):
+    def unnest_dict(self, fluid_params_dict: Dict) -> Dict:
         unnested_dict = {}
         
         for key, value in fluid_params_dict.items():
@@ -54,30 +46,26 @@ class FluidParamEmbedding(nn.Module):
                 
         return unnested_dict
         
-    def _get_valid_params(self, fluid_params_dicts: List[Dict[str, ...]]):
+    def _get_valid_params(self, fluid_params_dicts: List[Dict[str, ...]]) -> List[Dict[str, float]]:
         r"""
         This does the following:
           1. Unnests the dictionary of fluid parameters (I.e., fluid_params_dict["heater"]["wallTemp"] -> unnested["heater_wallTemp"]).
           2. filters out the fluid parameters that are in the self.fluid_params list.
 
         It is allowed for a fluid parameter to be NOT specified in the dictionary. (It just won't be used in the embedding).
-        but all specified fluid parameters must be in the self.fluid_params list.
         """
         unnested = [self.unnest_dict(fluid_params_dict) for fluid_params_dict in fluid_params_dicts]
-        for fluid_params_dict in unnested:
-            for key, value in fluid_params_dict.items():
-                assert key in self.fluid_params, f"Fluid parameter {key} is not in the self.fluid_params list."
         return [
             dict([(k, v) for k, v in fluid_params_dict.items() if k in self.fluid_params]) for fluid_params_dict in unnested
         ]
 
-    def forward(self, fluid_params_dicts: List[Dict[str, ...]]):
+    def forward(self, fluid_params_dicts: List[Dict[str, ...]]) -> torch.Tensor:
         fluid_params_dicts = self._get_valid_params(fluid_params_dicts)
         device = self.base_embedding.weight.device
         dtype = self.base_embedding.weight.dtype
         
         # All of the modulated embeddings are summed together to get the parameter embedding.
-        param_embedding = torch.zeros(len(fluid_params_dicts), self.embed_dim, dtype=dtype, device=device)
+        param_embedding = torch.zeros(len(fluid_params_dicts), 2 * self.embed_dim, dtype=dtype, device=device)
         for batch_idx, fluid_params_dict in enumerate(fluid_params_dicts):
 
             param_indices = [self.fluid_params.index(param_name) for param_name in fluid_params_dict.keys()]
@@ -89,4 +77,5 @@ class FluidParamEmbedding(nn.Module):
             film_embedding = self.film_mlp(base_embedding[:, None, None, None, :], param_values.unsqueeze(-1)).squeeze()
             param_embedding[batch_idx] = film_embedding.sum(0)
         
-        return self.mlp(param_embedding)
+        gamma, beta = param_embedding.chunk(2, dim=1)
+        return gamma, beta
