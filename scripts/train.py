@@ -165,7 +165,7 @@ def main(cfg: DictConfig) -> None:
         num_nodes=cfg.nodes,
         strategy="auto",
         max_epochs=cfg.max_epochs,
-        #max_steps=30, # NOTE: limited for profiling
+        accumulate_grad_batches=8,
         logger=logger,
         default_root_dir=params["log_dir"],
         plugins=[SLURMEnvironment(requeue_signal=signal.SIGHUP)],

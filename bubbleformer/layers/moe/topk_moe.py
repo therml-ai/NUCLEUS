@@ -29,7 +29,7 @@ class TopkMoEOutput:
         self.topk_indices = self.topk_indices.detach()
         self.load_balance_loss = self.load_balance_loss.detach()
         return self
-    
+
 def load_balance_loss(
     router_logits: torch.Tensor,
     expert_counts: torch.Tensor,

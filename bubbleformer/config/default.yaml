@@ -12,13 +12,11 @@ checkpoint_path:
 use_wandb: False
 wandb_tags:
   - time-window-5
-  - relative-l2-loss
-  - Neighbor-MoE-Small
   - poolboiling
   - AdamW-optimizer
 defaults:
   - _self_
-  - data_cfg: poolboiling
-  - model_cfg: neighbor_moe_small
+  - data_cfg: poolboiling64
+  - model_cfg: neighbor_moe_fluid_embed1
   - optim_cfg: adamw
   - scheduler_cfg: cosine_warmup

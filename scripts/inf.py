@@ -45,7 +45,7 @@ def main(cfg: DictConfig):
     save_root = pathlib.Path(cfg.checkpoint_path).parent / "inference_rollouts"
     save_root.mkdir(parents=True, exist_ok=True)
     for test_file_path in cfg.data_cfg.test_paths:
-        test_results: TestResults = run_test(model, test_file_path, max_timesteps=1000)
+        test_results: TestResults = run_test(model, test_file_path, max_timesteps=41)
         setup = test_results.fluid_params["setup"]
         liquid = test_results.fluid_params["liquid"]
         heater_temp = test_results.fluid_params["heater"]["wallTemp"]

@@ -42,24 +42,15 @@ def run_test(model, test_file_path: str, max_timesteps: int):
             print(f"Processing timestep {itr} / {max_timesteps}")
             
             data: Data = test_dataset[itr]
-            data = data.normalize()
             
-            inp = data.input
-            tgt = data.target
-            fluid_params = data.fluid_params_tensor
-            
-            if len(preds) > 0:
-                inp = preds[-1]
-                inp = normalize(inp, *data.get_temps())
+            batch = data.to_collated_batch()
+            batch = batch.to("cuda")
 
-            inp = inp.cuda().to(torch.float32).unsqueeze(0)
-            tgt = tgt.cuda().to(torch.float32).unsqueeze(0)
-            fluid_params = fluid_params.cuda().to(torch.float32).unsqueeze(0)
-            
-            # Note: adding a little gaussian noise to the input
-            #inp += torch.randn_like(inp) * 0.1
-            
-            output = model(inp, fluid_params)
+            if len(preds) > 0:
+                batch.input = preds[-1].unsqueeze(0).to(batch.input.device)
+            tgt = batch.target
+
+            output = model(batch.get_input())
             if isinstance(output, tuple):
                 pred, moe_output = output
             else:
@@ -71,8 +62,8 @@ def run_test(model, test_file_path: str, max_timesteps: int):
             if len(moe_output) > 0:
                 moe_outputs.append(moe_output[0].detach().to('cpu'))
                 
-            pred = unnormalize(pred, data.fluid_params_dict["bulk_temp"], data.fluid_params_dict["heater_wallTemp"])
-            tgt = unnormalize(tgt, data.fluid_params_dict["bulk_temp"], data.fluid_params_dict["heater_wallTemp"])
+            #pred = unnormalize(pred, data.fluid_params_dict["bulk_temp"], data.fluid_params_dict["heater"]["wallTemp"])
+            #tgt = unnormalize(tgt, data.fluid_params_dict["bulk_temp"], data.fluid_params_dict["heater"]["wallTemp"])
 
             # clip pred temperature to valid range, between liquid bulk temp and heater temp.
             pred[:, :, 1] = torch.clamp(
@@ -84,15 +75,17 @@ def run_test(model, test_file_path: str, max_timesteps: int):
             pred = pred.to(torch.float32).squeeze(0).detach().cpu()
             tgt = tgt.to(torch.float32).squeeze(0).detach().cpu()
             
+            print(data.dx)
+            
             # Reinitialize the SDF at each timestep
-            pred[:, 0] = sdf_reinit(pred[:, 0], dx=1/32 * downsample_factor, far_threshold=4)
+            #pred[:, 0] = sdf_reinit(pred[:, 0], dx=data.dx, far_threshold=2)
             
             preds.append(pred)
             targets.append(tgt)
             timesteps.append(torch.arange(start_time+itr+skip_itrs, start_time+itr+2*skip_itrs))
             
-            torch.save(inp, f"inp_{itr}.pt")
-            break
+            #torch.save(inp, f"inp_{itr}.pt")
+            #break
 
     preds = torch.cat(preds, dim=0)[None, ...]         # 1, T, C, H, W
     targets = torch.cat(targets, dim=0)[None, ...]     # 1, T, C, H, W

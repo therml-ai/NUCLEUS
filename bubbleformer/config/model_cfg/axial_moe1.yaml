@@ -2,7 +2,7 @@ name: axial_moe
 train_module_name: moe_conditioned_forecast
 params:
   patch_size: 4
-  embed_dim: 384
+  embed_dim: 192
   processor_blocks: 6
   num_heads: 6
   num_fluid_params: 13

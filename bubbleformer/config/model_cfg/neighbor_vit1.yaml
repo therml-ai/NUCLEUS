@@ -1,8 +1,8 @@
-name: neighbor_vit
+name: neighbor_neuralop
 train_module_name: conditioned_forecast
 params:
   patch_size: 4
-  embed_dim: 384
-  processor_blocks: 6
-  num_heads: 6
-  num_fluid_params: 13
+  embed_dim: 256
+  processor_blocks: 4
+  num_heads: 8
+  num_fluid_params: 16

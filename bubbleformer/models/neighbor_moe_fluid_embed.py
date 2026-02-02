@@ -9,7 +9,6 @@ from bubbleformer.data.batching import CollatedBatch
 from bubbleformer.layers import (
     HMLPEmbed, 
     HMLPDebed,
-    FiLMMLP,
     TransformerNeighborMoEBlock
 )
 from bubbleformer.layers.fluid_param_embedding import FluidParamEmbedding

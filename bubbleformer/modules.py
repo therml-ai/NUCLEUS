@@ -14,7 +14,7 @@ import lightning as L
 
 from bubbleformer.data.batching import CollatedBatch
 from bubbleformer.models import get_model
-from bubbleformer.utils.losses import LpLoss, L1Loss
+from bubbleformer.utils.losses import LpLoss, L1Loss, L1RelativeLoss
 from bubbleformer.utils.lr_schedulers import CosineWarmupLR
 from bubbleformer.utils.plot_utils import wandb_sdf_plotter, wandb_temp_plotter, wandb_vel_plotter
 
@@ -52,7 +52,7 @@ class ForecastModule(L.LightningModule):
             self.normalization_constants = normalization_constants
         self.log_wandb = log_wandb
 
-        self.criterion = L1Loss(scales=[1, 1, 1, 1])
+        self.criterion = L1RelativeLoss()
         
         self.model_cfg["params"]["input_fields"] = len(self.data_cfg["input_fields"])
         self.model_cfg["params"]["output_fields"] = len(self.data_cfg["output_fields"])
@@ -307,12 +307,10 @@ class ConditionedForecastModule(ForecastModule):
         batch_idx: int
     ) -> torch.Tensor:
         
-        # normalize the input and target during training.
-        batch = batch.normalize()
         if random.random() < 0.5:
             batch = batch.fliplr()
         if random.random() < 0.4:
-            scale = random.choice([0.001, 0.01, 0.05, 0.1, 0.2, 0.5, 1])
+            scale = random.choice(torch.linspace(0.0001, 0.1, 500).tolist())
             batch = batch.gaussian_noise(scale)
 
         inp = batch.get_input()
@@ -331,7 +329,6 @@ class ConditionedForecastModule(ForecastModule):
         batch: CollatedBatch,
         batch_idx: int
     ) -> torch.Tensor:
-        batch = batch.normalize()
         inp = batch.get_input()
         pred = self.model(inp)
         loss = self.criterion(pred, batch.target)
@@ -367,12 +364,10 @@ class MoEConditionedForecastModule(ConditionedForecastModule):
         batch_idx: int
     ) -> torch.Tensor:
         
-        # normalize the input and target during training.
-        batch = batch.normalize()
         if random.random() < 0.5:
             batch = batch.fliplr()
         if random.random() < 0.4:
-            scale = random.choice([0.001, 0.01, 0.05, 0.1, 0.2, 0.5, 1])
+            scale = random.choice(torch.linspace(0.0001, 0.1, 500).tolist())
             batch = batch.gaussian_noise(scale)
 
         inp = batch.get_input()
@@ -396,7 +391,6 @@ class MoEConditionedForecastModule(ConditionedForecastModule):
         batch: CollatedBatch,
         batch_idx: int
     ) -> torch.Tensor:
-        batch = batch.normalize()
         inp = batch.get_input()
         pred, moe_outputs = self.model(inp)
         loss = self.criterion(pred, batch.target)

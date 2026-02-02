@@ -2,10 +2,10 @@ name: neighbor_moe_fluid_embed
 train_module_name: moe_conditioned_forecast
 params:
   patch_size: 4
-  embed_dim: 384
-  processor_blocks: 6
-  num_heads: 6
+  embed_dim: 512
+  processor_blocks: 2
+  num_heads: 4
   num_fluid_params: 16
-  num_experts: 6
+  num_experts: 8
   topk: 2
   load_balance_loss_weight: 0.01
