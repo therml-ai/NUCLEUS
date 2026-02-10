@@ -29,7 +29,8 @@ dependencies = [
     "rich",
     "scipy",
     "scikit-image",
-    "seaborn"
+    "seaborn",
+    "joblib"
 ]
 
 # Usually stuff is expected to be in `src/bubbleformer/`
