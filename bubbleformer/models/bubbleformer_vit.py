@@ -221,7 +221,6 @@ class BubbleformerFilmViT(nn.Module):
         # for blk, film in zip(self.blocks, self.film_blocks):
         for blk in self.blocks:
             x = blk(x)
-            # x = film(x, fluid_params)
 
         # Decode
         x = rearrange(x, "b t c h w -> (b t) c h w")

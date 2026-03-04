@@ -17,6 +17,7 @@ from bubbleformer.models import get_model
 from bubbleformer.utils.losses import L1RelativeLoss
 from bubbleformer.utils.lr_schedulers import CosineWarmupLR
 from bubbleformer.utils.plot_utils import wandb_sdf_plotter, wandb_temp_plotter, wandb_vel_plotter
+from bubbleformer.layers.moe.topk_moe import TopkRouterWithBias
 
 class ForecastModule(L.LightningModule):
     """
@@ -386,15 +387,52 @@ class MoEConditionedForecastModule(ConditionedForecastModule):
 
         bulk_temp, _ = batch.get_temps()
         data_loss = self.criterion(pred, batch.target, bulk_temp)
-        routing_loss = sum(moe_output.load_balance_loss for moe_output in moe_outputs)
-        loss = data_loss + routing_loss
+        
+        # use router loss to do load balancing.
+        router_with_loss = moe_outputs[0].router_output.router_type() == "loss"
+        if router_with_loss:   
+            router_loss = sum(moe_output.router_output.load_balance_loss for moe_output in moe_outputs)
+            loss = data_loss + router_loss
+        else:
+            loss = data_loss
+            
+        # using router bias to update the router.
+        router_with_bias = moe_outputs[0].router_output.router_type() == "bias"
+        if router_with_bias:
+            router_idx = 0
+            for module in self.modules():
+                if isinstance(module, TopkRouterWithBias):
+                    module.update_router_bias(moe_outputs[router_idx].router_output.tokens_per_expert)
+                    router_idx += 1
 
-        self.default_log_dict({
+        log_dict = {
             "train_loss": loss,
             "train_data_loss": data_loss,
-            "train_routing_loss": routing_loss,
             "learning_rate": self.get_current_lr()
-        })
+        }
+        if router_with_loss:
+            log_dict["train_routing_loss"] = router_loss
+        
+        for moe_idx, moe_output in enumerate(moe_outputs):
+            tpe = moe_output.router_output.tokens_per_expert.float()
+            
+            # perfect balance is 0, while 1 is imbalanced.
+            coeff_of_variation = (tpe.std() / tpe.mean()).item()
+            log_dict[f"train_coeff_of_variation_{moe_idx}"] = coeff_of_variation
+            
+            # Check the ratio of max load to the mean load.
+            # Ideally, this metric should be close to 1.
+            load_imbalance_factor = tpe.max() / tpe.mean()
+            log_dict[f"train_load_imbalance_factor_{moe_idx}"] = load_imbalance_factor.item()
+            
+            # Check if any experts receive less than 1% of the tokens.
+            # ideally, this metric should be 1.
+            min_fraction = 0.01
+            threshold = tpe.sum() * min_fraction
+            active = (tpe > threshold).float().mean()
+            log_dict[f"train_active_experts_{moe_idx}"] = active.item()
+        
+        self.default_log_dict(log_dict)
 
         return loss
 

@@ -3,32 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 from dataclasses import dataclass
-
-@dataclass
-class TopkMoEOutput:
-    out: torch.Tensor
-    router_logits: torch.Tensor
-    tokens_per_expert: torch.Tensor
-    topk_indices: torch.Tensor
-    load_balance_loss: torch.Tensor
-    topk: int
-    num_experts: int
-    
-    def to(self, device: torch.device):
-        self.out = self.out.to(device)
-        self.router_logits = self.router_logits.to(device)
-        self.tokens_per_expert = self.tokens_per_expert.to(device)
-        self.topk_indices = self.topk_indices.to(device)
-        self.load_balance_loss = self.load_balance_loss.to(device)
-        return self
-    
-    def detach(self):
-        self.out = self.out.detach()
-        self.router_logits = self.router_logits.detach()
-        self.tokens_per_expert = self.tokens_per_expert.detach()
-        self.topk_indices = self.topk_indices.detach()
-        self.load_balance_loss = self.load_balance_loss.detach()
-        return self
+from typing import Optional
 
 def load_balance_loss(
     router_logits: torch.Tensor,
@@ -66,8 +41,192 @@ def get_token_indices(
         group_indices = torch.empty(tokens_per_expert.size(0), dtype=torch.int32, device=topk_expert_indices.device)
         torch.cumsum(tokens_per_expert, dim=0, out=group_indices)
         return group_indices, indices, tokens_per_expert
+    
+@dataclass
+class RouterOutput:
+    router_logits: torch.Tensor
+    topk_probs: torch.Tensor
+    topk_indices: torch.Tensor
+    group_indices: torch.Tensor
+    indices: torch.Tensor
+    tokens_per_expert: torch.Tensor
+    
+    def router_type(self):
+        return None
+    
+    def to(self, device: torch.device):
+        return RouterOutput(
+            router_logits=self.router_logits.to(device),
+            topk_probs=self.topk_probs.to(device),
+            topk_indices=self.topk_indices.to(device),
+            group_indices=self.group_indices.to(device),
+            indices=self.indices.to(device),
+            tokens_per_expert=self.tokens_per_expert.to(device),
+        )
+    
+    def detach(self):
+        return RouterOutput(
+            router_logits=self.router_logits.detach(),
+            topk_probs=self.topk_probs.detach(),
+            topk_indices=self.topk_indices.detach(),
+            group_indices=self.group_indices.detach(),
+            indices=self.indices.detach(),
+            tokens_per_expert=self.tokens_per_expert.detach(),
+        )
+    
+class RouterBase(nn.Module):
+    r"""
+    This is a base class for a typical Top-k MoE router: Topk(Softmax(Rx))
+    """
+    def __init__(
+        self,
+        num_experts: int,
+        hidden_dim: int,
+        topk: int,
+        softmax_first: bool,
+    ):
+        super().__init__()
+        self.num_experts = num_experts
+        self.hidden_dim = hidden_dim
+        self.topk = topk
+        self.softmax_first = softmax_first
+        # Need bias=False, since a bias would create preference for specific experts,
+        # regardless of the input data.
+        self.router = nn.Linear(hidden_dim, num_experts, bias=False)
+        # 0.01 is chosen to be smaller than typical default initalization,
+        # smaller inital parameters should result in better initial load balance.
+        with torch.no_grad():
+            self.router.weight.data.normal_(0, 0.01)
+        
+    def forward(self, x, router_bias: Optional[torch.Tensor] = None):       
+        router_logits = self.router(x)
+        if router_bias is not None:
+            router_logits = router_logits + router_bias[None, :]
+        
+        if self.softmax_first:
+            router_probs = F.softmax(router_logits, dim=-1)
+            topk_probs, topk_indices = torch.topk(router_probs, k=self.topk, dim=-1)
+        else:        
+            topk_logits, topk_indices = torch.topk(router_logits, k=self.topk, dim=-1)
+            topk_probs = F.softmax(topk_logits, dim=-1)
+        
+        group_indices, indices, tokens_per_expert = get_token_indices(topk_indices, self.num_experts)
+        
+        return RouterOutput(
+            router_logits=router_logits,
+            topk_probs=topk_probs,
+            topk_indices=topk_indices,
+            group_indices=group_indices,
+            indices=indices,
+            tokens_per_expert=tokens_per_expert,
+        )
+    
+@dataclass
+class TopkRouterWithLossOutput(RouterOutput):
+    load_balance_loss: torch.Tensor
+    
+    def router_type(self):
+        return "loss"
+    
+class TopkRouterWithLoss(RouterBase):
+    def __init__(
+        self,
+        num_experts: int,
+        hidden_dim: int,
+        topk: int,
+        load_balance_loss_weight: float,
+        softmax_first: bool,
+    ):
+        super().__init__(num_experts, hidden_dim, topk, softmax_first)
+        self.load_balance_loss_weight = load_balance_loss_weight
 
-@torch.compile(fullgraph=True)
+    def forward(self, x):
+        router_output = super().forward(x)
+        loss = self.load_balance_loss_weight * load_balance_loss(
+            router_output.router_logits, 
+            router_output.tokens_per_expert, 
+            self.topk, 
+            self.num_experts
+        )
+        return TopkRouterWithLossOutput(
+            router_logits=router_output.router_logits,
+            topk_probs=router_output.topk_probs,
+            topk_indices=router_output.topk_indices,
+            group_indices=router_output.group_indices,
+            indices=router_output.indices,
+            tokens_per_expert=router_output.tokens_per_expert,
+            load_balance_loss=loss,
+        )
+        
+@dataclass
+class TopkRouterWithBiasOutput(RouterOutput):
+    router_bias: torch.Tensor
+    
+    def router_type(self):
+        return "bias"
+        
+class TopkRouterWithBias(RouterBase):
+    def __init__(
+        self,
+        num_experts: int,
+        hidden_dim: int,
+        topk: int,
+        bias_update_rate: float,
+        softmax_first: bool,
+    ):
+        super().__init__(num_experts, hidden_dim, topk, softmax_first)
+        # The router bias is not updated in the backward pass, but is instead adjusted manually
+        # based on the router load balancing
+        self.router_bias = nn.Parameter(torch.zeros(num_experts, dtype=torch.float32), requires_grad=False)
+        self.router_bias_update_rate = bias_update_rate
+        self.target_load_ratio = 1 / num_experts # each expert should get an equal ratio of tokens
+    
+    @torch.no_grad()
+    def update_router_bias(self, tokens_per_expert: torch.Tensor):
+        assert tokens_per_expert.dim() == 1, "Expert counts must be of shape (num_experts,)"
+        total_tokens = tokens_per_expert.sum()
+        load_ratio = tokens_per_expert / total_tokens
+        increase_mask = load_ratio < self.target_load_ratio
+        decrease_mask = ~increase_mask
+        self.router_bias[increase_mask] += self.router_bias_update_rate
+        self.router_bias[decrease_mask] -= self.router_bias_update_rate
+    
+    def forward(self, x):
+        router_output = super().forward(x, self.router_bias)
+        return TopkRouterWithBiasOutput(
+            router_logits=router_output.router_logits,
+            topk_probs=router_output.topk_probs,
+            topk_indices=router_output.topk_indices,
+            group_indices=router_output.group_indices,
+            indices=router_output.indices,
+            tokens_per_expert=router_output.tokens_per_expert,
+            router_bias=self.router_bias,
+        )
+        
+@dataclass
+class TopkMoEOutput:
+    out: torch.Tensor
+    router_output: RouterOutput
+    topk: int
+    num_experts: int
+    
+    def to(self, device: torch.device):
+        return TopkMoEOutput(
+            out=self.out.to(device),
+            router_output=self.router_output.to(device),
+            topk=self.topk,
+            num_experts=self.num_experts,
+        )
+    
+    def detach(self):
+        return TopkMoEOutput(
+            out=self.out.detach(),
+            router_output=self.router_output.detach(),
+            topk=self.topk,
+            num_experts=self.num_experts,
+        )
+
+#@torch.compile(fullgraph=True)
 class TopkMoE(nn.Module):
     def __init__(
         self,
@@ -75,25 +234,24 @@ class TopkMoE(nn.Module):
         hidden_dim: int,
         intermediate_dim: int,
         topk: int,
-        load_balance_loss_weight: float
+        router: RouterBase,
     ):
         super().__init__()
         self.num_experts = num_experts
         self.hidden_dim = hidden_dim
         self.intermediate_dim = intermediate_dim
         self.topk = topk
-        self.load_balance_loss_weight = load_balance_loss_weight
         
         self.w1 = nn.Parameter(torch.empty(num_experts, hidden_dim, intermediate_dim, dtype=torch.bfloat16))
         self.w2 = nn.Parameter(torch.empty(num_experts, intermediate_dim, hidden_dim, dtype=torch.bfloat16))
-        self.router = nn.Linear(hidden_dim, num_experts)
         self.reset_parameters()
+
+        self.router = router
         
     def reset_parameters(self):
         with torch.no_grad():
-            self.w1.normal_(0, 0.02)
-            self.w2.normal_(0, 0.02)
-            self.router.weight.data.normal_(0, 0.02)
+            self.w1.normal_(0, 1 / math.sqrt(self.hidden_dim))
+            self.w2.normal_(0, 1 / math.sqrt(self.intermediate_dim))
 
     def forward(self, x):
         r"""
@@ -108,36 +266,31 @@ class TopkMoE(nn.Module):
         x = x.view(-1, input_shape[-1])
         batch_size = x.shape[0]
         
-        router_logits = self.router(x)
-        router_probs = F.softmax(router_logits, dim=-1)
-        topk_probs, topk_indices = torch.topk(router_probs, k=self.topk, dim=-1)
-        group_indices, indices, tokens_per_expert = get_token_indices(topk_indices, self.num_experts)
+        router_output = self.router(x)
         
         # NOTE with torch.compile(fullgraph=True), the grouped gemm kernel does not support torch.float32, 
         # so the input data has to be truncated to bfloat 16.
-        groups = x[indices // self.topk].to(torch.bfloat16)        
+        groups = x[router_output.indices // self.topk].to(torch.bfloat16)        
         # Compute all of the experts
-        groups = torch._grouped_mm(groups, self.w1, group_indices)
+        groups = torch._grouped_mm(groups, self.w1, router_output.group_indices)
         groups = F.gelu(groups)
-        groups = torch._grouped_mm(groups, self.w2, group_indices)
+        groups = torch._grouped_mm(groups, self.w2, router_output.group_indices)
         groups = groups.to(torch.float32)
         
         # Scatter the tokens to [B, topk, hidden_dim]
         scattered = torch.empty_like(groups)
-        scattered[indices] = groups
+        scattered[router_output.indices] = groups
         scattered = scattered.view(batch_size, self.topk, self.hidden_dim)
         
         # reduce the output tokens and scale by the routing probability
-        out = (scattered * topk_probs.unsqueeze(-1)).sum(dim=1).view(input_shape)
+        out = (scattered * router_output.topk_probs.unsqueeze(-1)).sum(dim=1).view(input_shape)
         
-        loss = load_balance_loss(router_logits, tokens_per_expert, self.topk, self.num_experts) * self.load_balance_loss_weight
+        # Convert to convenient shape for visualization.
+        router_output.topk_indices = router_output.topk_indices.view(B, T, H, W, self.topk).detach().clone()        
         
         return TopkMoEOutput(
             out=out, 
-            router_logits=router_logits, # (num_tokens, num_experts)
-            tokens_per_expert=tokens_per_expert.detach().clone(), # (num_experts,)
-            topk_indices=topk_indices.view(B, T, H, W, self.topk).detach().clone(),
-            load_balance_loss=loss, # (1,)
+            router_output=router_output,
             topk=self.topk,
             num_experts=self.num_experts,
         )

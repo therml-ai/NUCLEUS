@@ -3,7 +3,7 @@ import torch.nn as nn
 from bubbleformer.layers.space_time_attention import SpaceTimeNeighborAttention, SpaceTimeAttention, SpaceTimeAxialAttention
 from bubbleformer.layers.mlp import GeluMLP
 from torch.profiler import record_function
-from bubbleformer.layers.moe.topk_moe import TopkMoE, TopkMoEOutput
+from bubbleformer.layers.moe.topk_moe import TopkMoE, TopkMoEOutput, TopkRouterWithLoss, TopkRouterWithBias
 
 class TransformerBlock(nn.Module):
     def __init__(
@@ -13,8 +13,8 @@ class TransformerBlock(nn.Module):
     ):
         super().__init__()
         
-        self.pre_norm = nn.LayerNorm(embed_dim)
-        self.post_norm = nn.LayerNorm(embed_dim)
+        self.attention_norm = nn.LayerNorm(embed_dim)
+        self.mlp_norm = nn.LayerNorm(embed_dim)
         
         self.attention = SpaceTimeAttention(
             embed_dim=embed_dim,
@@ -23,22 +23,19 @@ class TransformerBlock(nn.Module):
         
         self.mlp = GeluMLP(embed_dim)
         
+    def _attention(self, x: torch.Tensor) -> torch.Tensor:
+        with record_function("attention"):
+            x = self.attention(self.attention_norm(x)) + x
+        return x
+    
+    def _mlp(self, x: torch.Tensor) -> torch.Tensor:
+        with record_function("mlp"):
+            x = self.mlp(self.mlp_norm(x)) + x
+        return x    
+    
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        with record_function("transformer_block"):
-            # Attention with a skip connection
-            inp = x.clone()
-            with record_function("space_time_attention"):
-                x = self.attention(x)
-            with record_function("pre_norm"):          
-                x = self.pre_norm(x) + inp
-
-            # MLP with a skip connection
-            intermediate = x.clone()
-            with record_function("mlp"):
-                x = self.mlp(x)
-            with record_function("post_norm"):
-                x = self.post_norm(x) + intermediate
-
+        x = self._attention(x)
+        x = self._mlp(x)
         return x
     
 class TransformerMoEBlock(TransformerBlock):
@@ -52,70 +49,47 @@ class TransformerMoEBlock(TransformerBlock):
     ):
         super().__init__(embed_dim, num_heads)
         
+        self.router = TopkRouterWithLoss(
+            num_experts, 
+            embed_dim, 
+            topk, 
+            load_balance_loss_weight,
+            softmax_first=True
+        )
+        
         self.mlp = TopkMoE(
             num_experts=num_experts,
             hidden_dim=embed_dim,
             intermediate_dim=embed_dim * 4,
             topk=topk,
-            load_balance_loss_weight=load_balance_loss_weight,
+            router=self.router
         )
         
+    def _mlp(self, x: torch.Tensor) -> torch.Tensor:
+        with record_function("mlp"):
+            moe_output: TopkMoEOutput = self.mlp(x)
+            x = moe_output.out
+        return x, moe_output
+        
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        with record_function("transformer_moe_block"):
-            # Attention with a skip connection
-            inp = x.clone()
-            with record_function("space_time_attention"):
-                x = self.attention(x)
-            with record_function("pre_norm"):          
-                x = self.pre_norm(x) + inp
-
-            # MLP with a skip connection
-            intermediate = x.clone()
-            with record_function("mlp"):
-                moe_output: TopkMoEOutput = self.mlp(x)
-                x = moe_output.out
-            with record_function("post_norm"):
-                x = self.post_norm(x) + intermediate
-
+        x = self._attention(x)
+        x, moe_output = self._mlp(x)
         return x, moe_output
 
-class TransformerNeighborBlock(nn.Module):
+class TransformerNeighborBlock(TransformerBlock):
     def __init__(
         self,
         embed_dim: int,
         num_heads: int
     ):
-        super().__init__()
-
-        self.pre_norm = nn.LayerNorm(embed_dim)
-        self.post_norm = nn.LayerNorm(embed_dim)
-
+        super().__init__(embed_dim, num_heads)
         self.attention = SpaceTimeNeighborAttention(
             embed_dim=embed_dim,
             num_heads=num_heads,
         )
-
         self.mlp = GeluMLP(embed_dim)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        with record_function("transformer_neighbor_block"):
-            # Attention with a skip connection
-            inp = x.clone()
-            with record_function("space_time_attention"):
-                x = self.attention(x)
-            with record_function("pre_norm"):          
-                x = self.pre_norm(x) + inp
-
-            # MLP with a skip connection
-            intermediate = x.clone()
-            with record_function("mlp"):
-                x = self.mlp(x)
-            with record_function("post_norm"):
-                x = self.post_norm(x) + intermediate
-
-        return x
     
-class TransformerNeighborMoEBlock(TransformerNeighborBlock):
+class TransformerNeighborMoEBlock(TransformerMoEBlock):
     def __init__(
         self,
         embed_dim: int,
@@ -124,34 +98,11 @@ class TransformerNeighborMoEBlock(TransformerNeighborBlock):
         topk: int,
         load_balance_loss_weight: float,
     ):
-        super().__init__(embed_dim, num_heads)
-        
-        self.mlp = TopkMoE(
-            num_experts=num_experts,
-            hidden_dim=embed_dim,
-            intermediate_dim=embed_dim * 4,
-            topk=topk,
-            load_balance_loss_weight=load_balance_loss_weight,
+        super().__init__(embed_dim, num_heads, num_experts, topk, load_balance_loss_weight)
+        self.attention = SpaceTimeNeighborAttention(
+            embed_dim=embed_dim,
+            num_heads=num_heads,
         )
-        
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        with record_function("transformer_neighbor_moe_block"):
-            # Attention with a skip connection
-            inp = x.clone()
-            with record_function("space_time_attention"):
-                x = self.attention(x)
-            with record_function("pre_norm"):          
-                x = self.pre_norm(x) + inp
-
-            # MLP with a skip connection
-            intermediate = x.clone()
-            with record_function("mlp"):
-                moe_output: TopkMoEOutput = self.mlp(x)
-                x = moe_output.out
-            with record_function("post_norm"):
-                x = self.post_norm(x) + intermediate
-
-        return x, moe_output
     
 class TransformerAxialBlock(TransformerBlock):
     def __init__(
@@ -160,32 +111,12 @@ class TransformerAxialBlock(TransformerBlock):
         num_heads: int
     ):
         super().__init__(embed_dim, num_heads)
-        
         self.attention = SpaceTimeAxialAttention(
             embed_dim=embed_dim,
             num_heads=num_heads,
-        )
-        
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        with record_function("transformer_axial_block"):
-            # Attention with a skip connection
-            inp = x.clone()
-            with record_function("space_time_attention"):
-                x = self.attention(x)
-            with record_function("pre_norm"):          
-                x = self.pre_norm(x) + inp
-
-            # MLP with a skip connection
-            intermediate = x.clone()
-            with record_function("mlp"):
-                x = self.mlp(x)
-            with record_function("post_norm"):
-                x = self.post_norm(x) + intermediate
-
-        return x
+        )    
     
-    
-class TransformerAxialMoEBlock(TransformerAxialBlock):
+class TransformerAxialMoEBlock(TransformerMoEBlock):
     def __init__(
         self,
         embed_dim: int,
@@ -194,31 +125,8 @@ class TransformerAxialMoEBlock(TransformerAxialBlock):
         topk: int,
         load_balance_loss_weight: float,
     ):
-        super().__init__(embed_dim, num_heads)
-        
-        self.mlp = TopkMoE(
-            num_experts=num_experts,
-            hidden_dim=embed_dim,
-            intermediate_dim=embed_dim * 4,
-            topk=topk,
-            load_balance_loss_weight=load_balance_loss_weight,
+        super().__init__(embed_dim, num_heads, num_experts, topk, load_balance_loss_weight)
+        self.attention = SpaceTimeAxialAttention(
+            embed_dim=embed_dim,
+            num_heads=num_heads,
         )
-        
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        with record_function("transformer_axial_moe_block"):
-            # Attention with a skip connection
-            inp = x.clone()
-            with record_function("space_time_attention"):
-                x = self.attention(x)
-            with record_function("pre_norm"):          
-                x = self.pre_norm(x) + inp
-
-            # MLP with a skip connection
-            intermediate = x.clone()
-            with record_function("mlp"):
-                moe_output: TopkMoEOutput = self.mlp(x)
-                x = moe_output.out
-            with record_function("post_norm"):
-                x = self.post_norm(x) + intermediate
-
-        return x, moe_output
