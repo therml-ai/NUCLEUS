@@ -91,6 +91,7 @@ class MoEBase(nn.Module):
         # Apply FiLM conditioning on the embeddings
         with record_function("film_embed"):
             x = self.film_embed(x, fluid_params)
+            fluid_embed = x.clone()
 
         # Attention blocks, tracking the MoE output for the routing losses
         moe_outputs = []
@@ -101,8 +102,8 @@ class MoEBase(nn.Module):
 
         x = rearrange(x, "b t h w c -> b t c h w").contiguous()
         
-        # Skip connection from patch embeddings
-        x = x + embed
+        # Skip connection from patch and fluid embeddings
+        x = x + embed + fluid_embed
        
         # Decode
         x = rearrange(x, "b t c h w -> (b t) c h w")
