@@ -175,16 +175,15 @@ class TopkRouterWithBias(RouterBase):
         softmax_first: bool,
     ):
         super().__init__(num_experts, hidden_dim, topk, softmax_first)
-        # The router bias is not updated in the backward pass, but is instead adjusted manually
-        # based on the router load balancing
-        self.router_bias = nn.Parameter(torch.zeros(num_experts, dtype=torch.float32), requires_grad=False)
+        # The router bias is adjusted based on load balance, not modified during the backward pass.
+        self.register_buffer("router_bias", torch.zeros(num_experts, dtype=torch.float32))
         self.router_bias_update_rate = bias_update_rate
         self.target_load_ratio = 1 / num_experts # each expert should get an equal ratio of tokens
     
     @torch.no_grad()
     def update_router_bias(self, tokens_per_expert: torch.Tensor):
         assert tokens_per_expert.dim() == 1, "Expert counts must be of shape (num_experts,)"
-        total_tokens = tokens_per_expert.sum()
+        total_tokens = tokens_per_expert.sum().float()
         load_ratio = tokens_per_expert / total_tokens
         increase_mask = load_ratio < self.target_load_ratio
         decrease_mask = ~increase_mask
