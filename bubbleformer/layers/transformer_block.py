@@ -49,12 +49,20 @@ class TransformerMoEBlock(TransformerBlock):
     ):
         super().__init__(embed_dim, num_heads)
         
-        self.router = TopkRouterWithLoss(
+        #self.router = TopkRouterWithLoss(
+        #    num_experts, 
+        #    embed_dim, 
+        #    topk, 
+        #    load_balance_loss_weight,
+        #    softmax_first=True
+        #
+
+        self.router = TopkRouterWithBias(
             num_experts, 
             embed_dim, 
             topk, 
-            load_balance_loss_weight,
-            softmax_first=True
+            bias_update_rate=0.001, # This was used in deepseek-v3
+            softmax_first=False
         )
         
         self.mlp = TopkMoE(

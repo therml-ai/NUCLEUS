@@ -2,15 +2,20 @@ import os
 import pprint
 import time
 import signal
+from datetime import date
+import subprocess
+import glob
+from pathlib import Path
+from typing import Optional
 
 import hydra
 import wandb
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 import torch
 from torch.profiler import profile, record_function, ProfilerActivity
 from torch.utils.data import DataLoader
 from lightning import seed_everything, Trainer
-from lightning.pytorch.loggers import CSVLogger
+from lightning.pytorch.loggers.wandb import WandbLogger
 from lightning.pytorch.callbacks import ModelSummary, Callback, ModelCheckpoint, RichProgressBar
 from lightning.pytorch.callbacks.progress.rich_progress import RichProgressBarTheme
 from lightning.pytorch.plugins.environments import SLURMEnvironment
@@ -20,6 +25,19 @@ from bubbleformer.data import BubbleForecast, DownsampledBubbleForecast
 from bubbleformer.modules import get_train_module
 from bubbleformer.utils.set_fp32_precision import set_fp32_precision
 from bubbleformer.utils.parameter_count import count_model_parameters
+
+def get_git_sha(directory: Path) -> Optional[str]:
+    print(directory)
+    # Base case: if we reach the root directory, there's no .git directory.
+    # If this happens, there's something wrong with the directory structure.
+    if directory == Path("/"):
+        print(f"Reached root directory, without finding .git directory.")
+        return None
+    contains_dot_git_dir = (directory / ".git").exists()
+    if contains_dot_git_dir:
+        git_sha = (directory / ".git" / "refs" / "heads" / "main").read_text().strip()
+        return git_sha
+    return get_git_sha(directory.parent)
 
 def is_leader_process():
     """
@@ -70,33 +88,35 @@ class PreemptionCheckpointCallback(Callback):
 def main(cfg: DictConfig) -> None:
     seed_everything(cfg.seed)
     set_fp32_precision()
-
-    params = {}
-    params["nodes"] = cfg.nodes
-    params["devices"] = cfg.devices
-    params["checkpoint_path"] = cfg.checkpoint_path
-    params["data_cfg"] = cfg.data_cfg
-    params["model_cfg"] = cfg.model_cfg
-    params["optim_cfg"] =  cfg.optim_cfg
-    params["scheduler_cfg"] =  cfg.scheduler_cfg
-
-    #if params["checkpoint_path"] is None:
-    log_id = (
-        cfg.model_cfg.name.lower() + "_"
-        + cfg.data_cfg.dataset.lower() + "_"
-        + os.getenv("SLURM_JOB_ID")
-    )
-    params["log_dir"] = os.path.join(cfg.log_dir, log_id)
-    os.makedirs(params["log_dir"], exist_ok=True)
-    preempt_ckpt_path = params["log_dir"] + "/hpc_ckpt_1.ckpt"
-    #else:
-    #    log_id = cfg.checkpoint_path.split("/")[-2]
-    #    params["log_dir"] = "/".join(cfg.checkpoint_path.split("/")[:-1])
-    #    preempt_ckpt_num = int(cfg.checkpoint_path.split("_")[-1][:-5]) + 1
-    #    preempt_ckpt_path = params["log_dir"] + "/hpc_ckpt_" + str(preempt_ckpt_num) + ".ckpt"  
-
-    logger = CSVLogger(save_dir=params["log_dir"])
     
+    # Setup Wandb Logger.
+    log_id_parts = [
+        cfg.model_cfg.name.lower(),
+        cfg.data_cfg.dataset.lower(),
+        date.today().strftime("%Y-%m-%d"),
+    ]
+    if os.getenv("SLURM_JOB_ID") is not None:
+        log_id_parts.append(os.getenv("SLURM_JOB_ID"))
+    
+    log_id = "_".join(log_id_parts)
+    cfg.log_dir = os.path.join(cfg.log_dir, log_id)
+    os.makedirs(cfg.log_dir, exist_ok=True)
+    
+    commit_sha = get_git_sha(Path.cwd())
+    if commit_sha is None:
+        print("Failed to get commit SHA. Saving in config as None.")
+    cfg.commit_sha = commit_sha
+    
+    cfg_dict = OmegaConf.to_object(cfg)
+    print(cfg_dict)
+    logger = WandbLogger(
+        entity="hpcforge",
+        project="bubbleformer",
+        name=log_id,
+        save_dir=cfg.log_dir,
+        config=cfg_dict,
+    )
+        
     dataset = DownsampledBubbleForecast if "64" in cfg.data_cfg.dataset else BubbleForecast
     
     train_dataset = dataset(
@@ -105,7 +125,6 @@ def main(cfg: DictConfig) -> None:
                 output_fields=cfg.data_cfg.output_fields,
                 norm=cfg.data_cfg.normalize,
                 downsample_factor=cfg.data_cfg.downsample_factor,
-                #time_window=cfg.data_cfg.time_window,
                 history_time_window=cfg.data_cfg.history_time_window,
                 future_time_window=cfg.data_cfg.future_time_window,
                 time_step=cfg.data_cfg.time_step,
@@ -118,7 +137,6 @@ def main(cfg: DictConfig) -> None:
                 output_fields=cfg.data_cfg.output_fields,
                 norm=cfg.data_cfg.normalize,
                 downsample_factor=cfg.data_cfg.downsample_factor,
-                #time_window=cfg.data_cfg.time_window,
                 history_time_window=cfg.data_cfg.history_time_window,
                 future_time_window=cfg.data_cfg.future_time_window,
                 time_step=cfg.data_cfg.time_step,
@@ -132,7 +150,7 @@ def main(cfg: DictConfig) -> None:
         shuffle=True,
         num_workers=4,
         pin_memory=True,
-        prefetch_factor=1,
+        prefetch_factor=2,
         collate_fn=collate,
     )
     val_dataloader = DataLoader(
@@ -141,7 +159,7 @@ def main(cfg: DictConfig) -> None:
         shuffle=False,
         num_workers=4,
         pin_memory=True,
-        prefetch_factor=1,
+        prefetch_factor=2,
         collate_fn=collate,
     )
     
@@ -151,7 +169,7 @@ def main(cfg: DictConfig) -> None:
         data_cfg=cfg.data_cfg,
         optim_cfg=cfg.optim_cfg,
         scheduler_cfg=cfg.scheduler_cfg,
-        log_wandb=cfg.use_wandb,
+        log_wandb=False,
     )
 
     active_params = count_model_parameters(train_module.model, active=True)
@@ -175,23 +193,22 @@ def main(cfg: DictConfig) -> None:
     )
 
     trainer = Trainer(
-        accelerator="gpu",
+        accelerator="gpu" if torch.cuda.is_available() else "cpu",
         devices=cfg.devices,
         num_nodes=cfg.nodes,
         strategy="auto",
         max_epochs=cfg.max_epochs,
         accumulate_grad_batches=cfg.accumulate_grad_batches,
         logger=logger,
-        default_root_dir=params["log_dir"],
+        default_root_dir=cfg.log_dir,
         plugins=[SLURMEnvironment(requeue_signal=signal.SIGHUP)],
         enable_model_summary=True,
         num_sanity_val_steps=0,
         gradient_clip_val=1.0,
         callbacks=[
             ModelSummary(max_depth=-1), 
-            #PreemptionCheckpointCallback(preempt_ckpt_path),
             ModelCheckpoint(
-                dirpath=params["log_dir"] + "/checkpoints",
+                dirpath=cfg.log_dir + "/checkpoints",
                 monitor="val_loss",
                 mode="min",
                 save_top_k=2,
@@ -204,26 +221,7 @@ def main(cfg: DictConfig) -> None:
     
     if is_leader_process():
         pp = pprint.PrettyPrinter(depth=4)
-        pp.pprint(params)
-
-    wandb_run = None
-    if cfg.use_wandb and is_leader_process(): # Load only one wandb run
-        try:
-            wandb_key_path = "bubbleformer/config/wandb_api_key.txt"
-            with open(wandb_key_path, "r", encoding="utf-8") as f:
-                wandb_key = f.read().strip()
-            wandb.login(key=wandb_key)
-            wandb_run = wandb.init(
-                project="bubbleformer",
-                name=log_id,
-                dir=params["log_dir"],
-                tags=cfg.wandb_tags,
-                config=params,
-                resume="auto",
-            )
-        except FileNotFoundError as e:
-            print(e)
-            print("Valid wandb API key not found at path bubbleformer/config/wandb_api_key.txt")
+        pp.pprint(cfg)
 
     #torch.cuda.memory._record_memory_history(
     #    max_entries=100000
@@ -254,9 +252,6 @@ def main(cfg: DictConfig) -> None:
     #torch.cuda.memory._record_memory_history(
     #    enabled=None
     #)
-
-    if wandb_run:
-        wandb_run.finish()
 
 if __name__ == "__main__":
     # pylint: disable=no-value-for-parameter

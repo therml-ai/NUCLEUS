@@ -16,7 +16,7 @@ from bubbleformer.data.batching import CollatedBatch
 from bubbleformer.models import get_model
 from bubbleformer.utils.losses import L1RelativeLoss
 from bubbleformer.utils.lr_schedulers import CosineWarmupLR
-from bubbleformer.utils.plot_utils import wandb_sdf_plotter, wandb_temp_plotter, wandb_vel_plotter
+#from bubbleformer.utils.plot_utils import wandb_sdf_plotter, wandb_temp_plotter, wandb_vel_plotter
 from bubbleformer.layers.moe.topk_moe import TopkRouterWithBias
 
 class ForecastModule(L.LightningModule):
@@ -45,7 +45,7 @@ class ForecastModule(L.LightningModule):
         super().__init__()
         # whole model config to be saved to the checkpoint
         self.save_hyperparameters()
-        
+
         self.checkpoint_path = checkpoint_path
         self.model_cfg = OmegaConf.to_container(model_cfg, resolve=True)
         self.data_cfg = OmegaConf.to_container(data_cfg, resolve=True)
@@ -56,7 +56,7 @@ class ForecastModule(L.LightningModule):
         self.log_wandb = log_wandb
 
         self.criterion = L1RelativeLoss()
-        
+
         self.model_cfg["params"]["input_fields"] = len(self.data_cfg["input_fields"])
         self.model_cfg["params"]["output_fields"] = len(self.data_cfg["output_fields"])
         self.model = get_model(self.model_cfg["name"], **self.model_cfg["params"])
@@ -83,7 +83,7 @@ class ForecastModule(L.LightningModule):
         self.log(key, value, **kwargs)
         if self.log_wandb and self.trainer.is_global_zero:
             wandb.log({key: value})
-            
+
     def default_log_dict(self, dict, **kwargs):
         kwargs["on_step"] = True
         kwargs["on_epoch"] = True
@@ -92,11 +92,11 @@ class ForecastModule(L.LightningModule):
         self.log_dict(dict, **kwargs)
         if self.log_wandb and self.trainer.is_global_zero:
             wandb.log(dict)
-        
+
     def get_current_lr(self):
         opt = self.optimizers()
         return opt.param_groups[0]['lr']
-        
+
     def setup(
         self,
         stage: Optional[str] = None
@@ -107,7 +107,7 @@ class ForecastModule(L.LightningModule):
     def forward(
         self,
         x: torch.Tensor
-    ) -> torch.Tensor:     
+    ) -> torch.Tensor:
         return self.model(x)
 
     def training_step(
@@ -120,8 +120,8 @@ class ForecastModule(L.LightningModule):
         loss = self.criterion(pred, tgt)
 
         self.default_log_dict({
-            "train_loss": loss,
-            "learning_rate": self.get_current_lr()
+            "train/loss": loss,
+            "train/learning_rate": self.get_current_lr()
         })
 
         return loss
@@ -137,8 +137,8 @@ class ForecastModule(L.LightningModule):
         if batch_idx == 0:
             self.validation_sample = (inp.detach(), tgt.detach(), pred.detach())
 
-        self.default_log_dict({"val_loss": loss})
-        
+        self.default_log_dict({"val/loss": loss})
+
         return loss
 
     def configure_optimizers(self):
@@ -189,14 +189,14 @@ class ForecastModule(L.LightningModule):
         if self.train_start_time is not None: # when resuming from middle of epoch, var is None
             train_time = time.time() - self.train_start_time
             if self.log_wandb and self.trainer.is_global_zero:
-                wandb.log({"train_epoch_time": train_time, "epoch": self.current_epoch})
+                wandb.log({"train/epoch_time": train_time, "epoch": self.current_epoch})
 
     def on_validation_epoch_start(self):
         self.val_start_time = time.time()
         if self.log_wandb and self.trainer.is_global_zero:
             try:
-                train_loss = self.trainer.callback_metrics["train_loss"].item()
-                wandb.log({"train_loss_epoch": train_loss, "epoch": self.current_epoch})
+                train_loss = self.trainer.callback_metrics["train/loss"].item()
+                wandb.log({"train/loss_epoch": train_loss, "epoch": self.current_epoch})
             except:
                 pass
 
@@ -204,73 +204,7 @@ class ForecastModule(L.LightningModule):
         if self.val_start_time is not None:
             val_time = time.time() - self.val_start_time
             if self.log_wandb and self.trainer.is_global_zero:
-                wandb.log({"val_epoch_time": val_time, "epoch": self.current_epoch})
-
-        fields = self.data_cfg["output_fields"]
-        if self.validation_sample is None:
-            return
-        _, targets, predictions = self.validation_sample
-
-        target_sample = targets[0] # T, C, H, W
-        pred_sample = predictions[0] # T, C, H, W
-
-        if self.log_wandb and self.trainer.is_global_zero:
-            try:
-                sdf_idx = fields.index("dfun")
-                target_sdfs = wandb_sdf_plotter(target_sample[:,sdf_idx,:,:])
-                pred_sdfs = wandb_sdf_plotter(pred_sample[:,sdf_idx,:,:])
-                wandb.log({
-                    "Target SDF": wandb.Image(target_sdfs, caption=f"Epc {self.current_epoch}"),
-                    "Prediction SDF": wandb.Image(pred_sdfs, caption=f"Epc {self.current_epoch}"),
-                })
-
-            except ValueError:
-                pass
-            try:
-                temp_idx = fields.index("temperature")
-                target_temps = wandb_temp_plotter(target_sample[:,temp_idx,:,:])
-                pred_temps = wandb_temp_plotter(pred_sample[:,temp_idx,:,:])
-                wandb.log({
-                    "Target Temp": wandb.Image(target_temps, caption=f"Epc {self.current_epoch}"),
-                    "Prediction Temp": wandb.Image(pred_temps, caption=f"Epc {self.current_epoch}")
-                })
-            except ValueError:
-                pass
-            try:
-                velx_idx = fields.index("velx")
-                vely_idx = fields.index("vely")
-                target_vel_field = torch.stack([
-                                        target_sample[:,velx_idx,:,:],
-                                        target_sample[:,vely_idx,:,:]
-                                    ],
-                                    dim=1
-                                )
-                pred_vel_field = torch.stack([
-                                        pred_sample[:,velx_idx,:,:],
-                                        pred_sample[:,vely_idx,:,:]
-                                    ],
-                                    dim=1
-                                )
-                #input_vels = wandb_vel_plotter(input_vel_field)
-                target_vels = wandb_vel_plotter(target_vel_field)
-                pred_vels = wandb_vel_plotter(pred_vel_field)
-                wandb.log({
-                    #"Input Velocity": wandb.Image(input_vels),
-                    "Target Vel": wandb.Image(target_vels, caption=f"Epc {self.current_epoch}"),
-                    "Prediction Vel": wandb.Image(pred_vels, caption=f"Epc {self.current_epoch}")
-                })
-            except ValueError:
-                pass
-
-        plt.close("all")
-        self.validation_outputs = []
-
-        if self.log_wandb and self.trainer.is_global_zero:
-            try:
-                val_loss = self.trainer.callback_metrics["val_loss"].item()
-                wandb.log({"val_loss_epoch": val_loss, "epoch": self.current_epoch})
-            except:
-                pass
+                wandb.log({"val/epoch_time": val_time, "epoch": self.current_epoch})
 
 class ConditionedForecastModule(ForecastModule):
     """
@@ -282,7 +216,7 @@ class ConditionedForecastModule(ForecastModule):
         optim_cfg (DictConfig): YAML Optimizer config loaded using OmegaConf
         scheduler_cfg (DictConfig): YAML Scheduler config loaded using OmegaConf
         log_wandb (bool): Whether to log to wandb
-        normalization_constants (Tuple[List, List]): 
+        normalization_constants (Tuple[List, List]):
                     Difference and Division constants for normalization
     """
     def __init__(
@@ -310,7 +244,7 @@ class ConditionedForecastModule(ForecastModule):
         batch: Tuple[Tuple[torch.Tensor, torch.Tensor], torch.Tensor],
         batch_idx: int
     ) -> torch.Tensor:
-        
+
         if random.random() < 0.5:
             batch = batch.fliplr()
         if random.random() < 0.8:
@@ -323,7 +257,7 @@ class ConditionedForecastModule(ForecastModule):
         pred = self.model(inp)
         bulk_temp, _ = batch.get_temps()
         loss = self.criterion(pred, batch.target, bulk_temp)
-        
+
         self.default_log_dict({
             "train_loss": loss,
             "learning_rate": self.get_current_lr()
@@ -344,9 +278,9 @@ class ConditionedForecastModule(ForecastModule):
             self.validation_sample = (batch.input.detach(), batch.target.detach(), pred.detach())
 
         self.default_log_dict({"val_loss": loss})
-    
+
         return loss
-    
+
 class MoEConditionedForecastModule(ConditionedForecastModule):
     def __init__(
         self,
@@ -368,12 +302,33 @@ class MoEConditionedForecastModule(ConditionedForecastModule):
             normalization_constants=normalization_constants
         )
 
+    def moe_metrics(self, moe_outputs, log_dict: dict, prefix: str) -> dict:
+        for moe_idx, moe_output in enumerate(moe_outputs):
+            tpe = moe_output.router_output.tokens_per_expert.float()
+
+            # perfect balance is 0, while 1 is imbalanced.
+            coeff_of_variation = (tpe.std() / tpe.mean()).item()
+            log_dict[f"{prefix}/coeff_of_variation_{moe_idx}"] = coeff_of_variation
+
+            # Check the ratio of max load to the mean load.
+            # Ideally, this metric should be close to 1.
+            load_imbalance_factor = tpe.max() / tpe.mean()
+            log_dict[f"{prefix}/load_imbalance_factor_{moe_idx}"] = load_imbalance_factor.item()
+
+            # Check if any experts receive less than 1% of the tokens.
+            # ideally, this metric should be 1.
+            min_fraction = 0.01
+            threshold = tpe.sum() * min_fraction
+            active = (tpe > threshold).float().mean()
+            log_dict[f"{prefix}/active_experts_{moe_idx}"] = active.item()
+        return log_dict
+
     def training_step(
         self,
         batch: CollatedBatch,
         batch_idx: int
     ) -> torch.Tensor:
-        
+
         if random.random() < 0.5:
             batch = batch.fliplr()
         if random.random() < 0.8:
@@ -387,15 +342,15 @@ class MoEConditionedForecastModule(ConditionedForecastModule):
 
         bulk_temp, _ = batch.get_temps()
         data_loss = self.criterion(pred, batch.target, bulk_temp)
-        
+
         # use router loss to do load balancing.
         router_with_loss = moe_outputs[0].router_output.router_type() == "loss"
-        if router_with_loss:   
+        if router_with_loss:
             router_loss = sum(moe_output.router_output.load_balance_loss for moe_output in moe_outputs)
             loss = data_loss + router_loss
         else:
             loss = data_loss
-            
+
         # using router bias to update the router.
         router_with_bias = moe_outputs[0].router_output.router_type() == "bias"
         if router_with_bias:
@@ -406,32 +361,15 @@ class MoEConditionedForecastModule(ConditionedForecastModule):
                     router_idx += 1
 
         log_dict = {
-            "train_loss": loss,
-            "train_data_loss": data_loss,
-            "learning_rate": self.get_current_lr()
+            "train/loss": loss,
+            "train/data_loss": data_loss,
+            "train/learning_rate": self.get_current_lr()
         }
         if router_with_loss:
-            log_dict["train_routing_loss"] = router_loss
-        
-        for moe_idx, moe_output in enumerate(moe_outputs):
-            tpe = moe_output.router_output.tokens_per_expert.float()
-            
-            # perfect balance is 0, while 1 is imbalanced.
-            coeff_of_variation = (tpe.std() / tpe.mean()).item()
-            log_dict[f"train_coeff_of_variation_{moe_idx}"] = coeff_of_variation
-            
-            # Check the ratio of max load to the mean load.
-            # Ideally, this metric should be close to 1.
-            load_imbalance_factor = tpe.max() / tpe.mean()
-            log_dict[f"train_load_imbalance_factor_{moe_idx}"] = load_imbalance_factor.item()
-            
-            # Check if any experts receive less than 1% of the tokens.
-            # ideally, this metric should be 1.
-            min_fraction = 0.01
-            threshold = tpe.sum() * min_fraction
-            active = (tpe > threshold).float().mean()
-            log_dict[f"train_active_experts_{moe_idx}"] = active.item()
-        
+            log_dict["train/routing_loss"] = router_loss
+
+        log_dict = self.moe_metrics(moe_outputs, log_dict, "train")
+
         self.default_log_dict(log_dict)
 
         return loss
@@ -448,10 +386,14 @@ class MoEConditionedForecastModule(ConditionedForecastModule):
         if batch_idx == 0:
             self.validation_sample = (batch.input.detach(), batch.target.detach(), pred.detach())
 
-        self.default_log_dict({"val_loss": loss})
-    
+        log_dict = {
+            "val/loss": loss,
+        }
+        log_dict = self.moe_metrics(moe_outputs, log_dict, "val")
+        self.default_log_dict(log_dict)
+
         return loss
-    
+
 def get_train_module(module_name: str):
     if module_name == "forecast":
         return ForecastModule
