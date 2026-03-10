@@ -225,7 +225,7 @@ class TopkMoEOutput:
             num_experts=self.num_experts,
         )
 
-#@torch.compile(fullgraph=True)
+@torch.compile(fullgraph=True)
 class TopkMoE(nn.Module):
     def __init__(
         self,
