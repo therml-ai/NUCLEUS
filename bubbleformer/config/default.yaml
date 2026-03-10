@@ -9,6 +9,7 @@ batch_size: 16
 accumulate_grad_batches: 1
 
 checkpoint_path:
+commit_sha:
 
 use_wandb: False
 wandb_tags:
@@ -17,7 +18,8 @@ wandb_tags:
   - AdamW-optimizer
 defaults:
   - _self_
-  - data_cfg: poolboiling64
+  - data_cfg: poolboiling
   - model_cfg: neighbor_moe1
   - optim_cfg: adamw
   - scheduler_cfg: cosine_warmup
+  - normalizer_cfg: simple

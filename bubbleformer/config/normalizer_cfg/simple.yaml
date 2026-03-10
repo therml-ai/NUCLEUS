@@ -1,0 +1,7 @@
+name: simple
+absmax_temp: 204 # based on bulk temp
+max_domain_size: 16 # pool boiling is (-8, 8) x (0, 16)
+velx_std: 1 # based on training data
+vely_std: 1 # based on training data
+numeric_fluid_params_min: null # not normalizing atm
+numeric_fluid_params_max: null # not normalizing atm
