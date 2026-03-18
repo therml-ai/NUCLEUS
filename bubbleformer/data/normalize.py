@@ -108,19 +108,19 @@ class Normalizer:
         pass
 
     def normalize_velx(self, vel: torch.Tensor) -> torch.Tensor:
-        return vel / self.constants.velx_std
+        return (vel - self.constants.velx_mean) / self.constants.velx_std
     
     def unnormalize_velx(self, vel: torch.Tensor) -> torch.Tensor:
-        return vel * self.constants.velx_std
+        return vel * self.constants.velx_std + self.constants.velx_mean
     
     def normalize_vely(self, vel: torch.Tensor) -> torch.Tensor:
-        return vel / self.constants.vely_std
+        return (vel - self.constants.vely_mean) / self.constants.vely_std
     
     def unnormalize_vely(self, vel: torch.Tensor) -> torch.Tensor:
-        return vel * self.constants.vely_std
+        return vel * self.constants.vely_std + self.constants.vely_mean
     
     def normalize_sdf(self, sdf: torch.Tensor) -> torch.Tensor:
-        return sdf - self.constants.sdf_mean / (self.constants.sdf_std)
+        return (sdf - self.constants.sdf_mean) / self.constants.sdf_std
     
     def unnormalize_sdf(self, sdf: torch.Tensor) -> torch.Tensor:
         return sdf * self.constants.sdf_std + self.constants.sdf_mean
