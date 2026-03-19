@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from bubbleformer.layers.space_time_attention import SpaceTimeNeighborAttention, SpaceTimeAttention, SpaceTimeAxialAttention
+from bubbleformer.layers.space_time_attention import NeighborhoodAttention, SpaceTimeNeighborAttention, SpaceTimeAttention, SpaceTimeAxialAttention
 from bubbleformer.layers.mlp import GeluMLP
 from torch.profiler import record_function
 from bubbleformer.layers.moe.topk_moe import TopkMoE, TopkMoEOutput, TopkRouterWithLoss, TopkRouterWithBias
@@ -48,14 +48,6 @@ class TransformerMoEBlock(TransformerBlock):
         load_balance_loss_weight: float,
     ):
         super().__init__(embed_dim, num_heads)
-        
-        #self.router = TopkRouterWithLoss(
-        #    num_experts, 
-        #    embed_dim, 
-        #    topk, 
-        #    load_balance_loss_weight,
-        #    softmax_first=True
-        #
 
         self.router = TopkRouterWithBias(
             num_experts, 
@@ -83,8 +75,35 @@ class TransformerMoEBlock(TransformerBlock):
         x = self._attention(x)
         x, moe_output = self._mlp(x)
         return x, moe_output
-
+    
 class TransformerNeighborBlock(TransformerBlock):
+    def __init__(
+        self,
+        embed_dim: int,
+        num_heads: int
+    ):
+        super().__init__(embed_dim, num_heads)
+        self.attention = NeighborhoodAttention(
+            embed_dim=embed_dim,
+            num_heads=num_heads,
+        )
+    
+class TransformerNeighborMoEBlock(TransformerMoEBlock):
+    def __init__(
+        self,
+        embed_dim: int,
+        num_heads: int,
+        num_experts: int,
+        topk: int,
+        load_balance_loss_weight: float,
+    ):
+        super().__init__(embed_dim, num_heads, num_experts, topk, load_balance_loss_weight)
+        self.attention = NeighborhoodAttention(
+            embed_dim=embed_dim,
+            num_heads=num_heads,
+        )
+    
+class TransformerSpatialNeighborBlock(TransformerBlock):
     def __init__(
         self,
         embed_dim: int,
@@ -97,7 +116,7 @@ class TransformerNeighborBlock(TransformerBlock):
         )
         self.mlp = GeluMLP(embed_dim)
     
-class TransformerNeighborMoEBlock(TransformerMoEBlock):
+class TransformerSpatialNeighborMoEBlock(TransformerMoEBlock):
     def __init__(
         self,
         embed_dim: int,

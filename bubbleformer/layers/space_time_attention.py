@@ -2,7 +2,8 @@ import torch
 import torch.nn as nn
 
 from bubbleformer.layers.attention import (
-    TemporalAttention, 
+    NeighborhoodAttention,
+    TemporalAttention,
     SpatialNeighborhoodAttention, 
     SpatialAttention, 
     SpatialAxialAttention,
@@ -25,7 +26,7 @@ class SpaceTimeNeighborAttention(nn.Module):
             embed_dim=embed_dim,
             num_heads=num_heads,
         )
-
+        
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.temporal(x)
         x = self.spatial(x)

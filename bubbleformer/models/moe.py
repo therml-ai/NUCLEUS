@@ -13,7 +13,8 @@ from bubbleformer.layers import (
     FiLMMLP,
     TransformerMoEBlock,
     TransformerAxialMoEBlock,
-    TransformerNeighborMoEBlock
+    TransformerNeighborMoEBlock,
+    TransformerSpatialNeighborMoEBlock
 )
 from bubbleformer.data.batching import CollatedBatch
 from ._api import register_model
@@ -167,6 +168,44 @@ class AxialMoE(MoEBase):
             for _ in range(processor_blocks)
         ])
 
+@register_model("spatial_neighbor_moe")
+class SpatialNeighborMoE(MoEBase):
+    def __init__(
+        self,
+        input_fields: int,
+        output_fields: int,
+        patch_size: int,
+        embed_dim: int,
+        num_heads: int,
+        processor_blocks: int,
+        num_fluid_params: int,
+        num_experts: int,
+        topk: int,
+        load_balance_loss_weight: float,
+    ):
+        super().__init__(
+            input_fields=input_fields,
+            output_fields=output_fields,
+            patch_size=patch_size,
+            embed_dim=embed_dim,
+            num_heads=num_heads,
+            processor_blocks=processor_blocks,
+            num_fluid_params=num_fluid_params,
+            num_experts=num_experts,
+            topk=topk,
+            load_balance_loss_weight=load_balance_loss_weight,
+        )
+        self.blocks = nn.ModuleList([
+            TransformerSpatialNeighborMoEBlock(
+                embed_dim=embed_dim,
+                num_heads=num_heads,
+                num_experts=num_experts,
+                topk=topk,
+                load_balance_loss_weight=load_balance_loss_weight,
+            )
+            for _ in range(processor_blocks)
+        ])
+        
 @register_model("neighbor_moe")
 class NeighborMoE(MoEBase):
     def __init__(
