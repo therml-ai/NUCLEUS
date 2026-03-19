@@ -126,26 +126,26 @@ class Normalizer:
         return sdf * self.constants.sdf_std + self.constants.sdf_mean
     
     def normalize(self, data: torch.Tensor, bulk_temp: torch.Tensor) -> torch.Tensor:
-        assert data.dim() >= 4, "Data must be at least 4D (..., T, C, H, W)"
-        assert data.shape[-3] == 4, "Data must have 4 channels (sdf, temp, velx, vely)"
+        assert data.dim() >= 4, "Data must be at least 4D (..., T, H, W, C)"
+        assert data.shape[-1] == 4, "Data must have 4 channels (sdf, temp, velx, vely)"
         assert data.shape[:-4] == bulk_temp.shape, "Bulk temperature must match the batch dimensions of the data"
         return torch.stack([
-            self.normalize_sdf(data[..., 0, :, :]),
-            self.normalize_temp(data[..., 1, :, :], bulk_temp),
-            self.normalize_velx(data[..., 2, :, :]),
-            self.normalize_vely(data[..., 3, :, :]),
-        ], dim=-3)
+            self.normalize_sdf(data[..., 0]),
+            self.normalize_temp(data[..., 1], bulk_temp),
+            self.normalize_velx(data[..., 2]),
+            self.normalize_vely(data[..., 3]),
+        ], dim=-1)
         
     def unnormalize(self, data: torch.Tensor, bulk_temp: torch.Tensor) -> torch.Tensor:
-        assert data.dim() >= 4, "Data must be at least 4D (..., T, C, H, W)"
-        assert data.shape[-3] == 4, "Data must have 4 channels (sdf, temp, velx, vely)"
+        assert data.dim() >= 4, "Data must be at least 4D (..., T, H, W, C)"
+        assert data.shape[-1] == 4, "Data must have 4 channels (sdf, temp, velx, vely)"
         assert data.shape[:-4] == bulk_temp.shape, "Bulk temperature must match the batch dimensions of the data"
         return torch.stack([
-            self.unnormalize_sdf(data[..., 0, :, :]),
-            self.unnormalize_temp(data[..., 1, :, :], bulk_temp),
-            self.unnormalize_velx(data[..., 2, :, :]),
-            self.unnormalize_vely(data[..., 3, :, :]),
-        ], dim=-3)
+            self.unnormalize_sdf(data[..., 0]),
+            self.unnormalize_temp(data[..., 1], bulk_temp),
+            self.unnormalize_velx(data[..., 2]),
+            self.unnormalize_vely(data[..., 3]),
+        ], dim=-1)
         
 class StandardNormalizer(Normalizer):
     r"""

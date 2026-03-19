@@ -118,12 +118,12 @@ class BubbleForecast(Dataset):
                 ).squeeze(1)
             out_data.append(data_item)
 
-        inp_data = torch.stack(inp_data)                                   # (in_C, T, H, W)
-        out_data = torch.stack(out_data)                                   # (out_C, T, H, W)
+        inp_data = torch.stack(inp_data, dim=-1)
+        out_data = torch.stack(out_data, dim=-1)
 
         return make_data(
-            input=inp_data.float().permute(1, 0, 2, 3),
-            target=out_data.float().permute(1, 0, 2, 3),
+            input=inp_data.float(),
+            target=out_data.float(),
             fluid_params_dict=self.fluid_params[file_idx],
             downsample_factor=self.downsample_factor
         )

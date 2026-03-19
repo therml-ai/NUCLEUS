@@ -57,6 +57,9 @@ class CollatedBatch:
             fluid_params_dict=self.fluid_params_dict,
             x_grid=self.x_grid.detach(),
             y_grid=self.y_grid.detach(),
+            dx=self.dx.detach(),
+            dy=self.dy.detach(),
+            rollout_steps=self.rollout_steps
         )
     
     def get_input(self):
@@ -77,8 +80,9 @@ class CollatedBatch:
         
     def fliplr(self):
         return CollatedBatch(
-            input=torch.fliplr(self.input),
-            target=torch.fliplr(self.target),
+            # B T H W C, flip along the width (dim 3)
+            input=torch.flip(self.input, dims=[3]),
+            target=torch.flip(self.input, dims=[3]),
             fluid_params_dict=self.fluid_params_dict,
             x_grid=self.x_grid,
             y_grid=self.y_grid,
@@ -117,15 +121,15 @@ class CollatedBatch:
         )
         
     def gaussian_noise(self, sdf_scale: float, temp_scale: float, vel_scale: float):
-        sdf_noise = torch.normal(0, sdf_scale, self.input[:, :, 0, :, :].shape, device=self.input.device)
-        temp_noise = torch.normal(0, temp_scale, self.input[:, :, 1, :, :].shape, device=self.input.device)
-        velx_noise = torch.normal(0, vel_scale, self.input[:, :, 2, :, :].shape, device=self.input.device)
-        vely_noise = torch.normal(0, vel_scale, self.input[:, :, 3, :, :].shape, device=self.input.device)
+        sdf_noise = torch.normal(0, sdf_scale, self.input[:, :, 0].shape, device=self.input.device)
+        temp_noise = torch.normal(0, temp_scale, self.input[:, :, 1].shape, device=self.input.device)
+        velx_noise = torch.normal(0, vel_scale, self.input[:, :, 2].shape, device=self.input.device)
+        vely_noise = torch.normal(0, vel_scale, self.input[:, :, 3].shape, device=self.input.device)
         noisy_input = torch.stack([
-            self.input[:, :, 0, :, :] + sdf_noise,
-            self.input[:, :, 1, :, :] + temp_noise,
-            self.input[:, :, 2, :, :] + velx_noise,
-            self.input[:, :, 3, :, :] + vely_noise,
+            self.input[..., 0] + sdf_noise,
+            self.input[..., 1] + temp_noise,
+            self.input[..., 2] + velx_noise,
+            self.input[..., 3] + vely_noise,
         ], dim=2)
         return CollatedBatch(
             input=noisy_input,

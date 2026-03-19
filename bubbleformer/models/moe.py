@@ -8,6 +8,8 @@ from torch.profiler import record_function
 from bubbleformer.layers import (
     HMLPEmbed, 
     HMLPDebed,
+    LinearEmbed,
+    LinearDebed,
     FiLMMLP,
     TransformerMoEBlock,
     TransformerAxialMoEBlock,
@@ -33,7 +35,7 @@ class MoEBase(nn.Module):
         load_balance_loss_weight: float,
     ):
         super().__init__()
-        self.embed = HMLPEmbed(
+        self.embed = LinearEmbed(
             patch_size=patch_size,
             in_channels=input_fields,
             embed_dim=embed_dim,
@@ -52,47 +54,35 @@ class MoEBase(nn.Module):
             for _ in range(processor_blocks)
         ])
 
-        self.debed = HMLPDebed(
+        self.out_norm = nn.RMSNorm(embed_dim)
+        self.debed = LinearDebed(
             patch_size=patch_size,
             embed_dim=embed_dim,
-            out_channels=embed_dim
-        )
-        
-        self.out_norm = nn.InstanceNorm2d(embed_dim)
-        self.sdf_proj = nn.Conv2d(embed_dim, 1, kernel_size=3, padding=1, dtype=torch.float32)
-        self.temp_proj = nn.Conv2d(embed_dim, 1, kernel_size=3, padding=1, dtype=torch.float32)
-        self.vel_proj = nn.Conv2d(embed_dim, 2, kernel_size=3, padding=1, dtype=torch.float32)
+            out_channels=output_fields
+        )        
         
     def forward(self, batch: CollatedBatch) -> torch.Tensor:
         """
-        x: (B, T, C, H, W)
+        x: (B, T, H, W, C)
         fluid_params: (B, num_fluid_params)
         """
         x = batch.input
         fluid_params = batch.fluid_params_tensor(x.device)
         B, T, _, _, _ = x.shape
         
-        input = x.clone()
+        input = x
         assert input.dtype == torch.float32
         assert fluid_params.dtype == torch.float32
-
+        
         # Encode
         with record_function("encode"):
-            x = rearrange(x, "b t c h w -> (b t) c h w")
             x = self.embed(x)
-            x = rearrange(x, "(b t) c h w -> b t c h w", t=T)
-
-        embed = x.clone()
-
-        # Permute to better order for attention (B, T, H, W, C)
-        # TODO: IDK if input should be in this format for the embedding or not...
-        # I think conv's do support NHWC layout.
-        x = rearrange(x, "b t c h w -> b t h w c").contiguous()
+        embed = x
 
         # Apply FiLM conditioning on the embeddings
         with record_function("film_embed"):
             x = self.film_embed(x, fluid_params)
-            fluid_embed = x.clone()
+        fluid_embed = x
 
         # Attention blocks, tracking the MoE output for the routing losses
         moe_outputs = []
@@ -100,28 +90,11 @@ class MoEBase(nn.Module):
             with record_function(f"block_{idx}"):
                x, moe_output = blk(x)
                moe_outputs.append(moe_output)
-
-        x = rearrange(x, "b t h w c -> b t c h w").contiguous()
         
         # Skip connection from patch and fluid embeddings
-        x = x + embed + rearrange(fluid_embed, "b t h w c -> b t c h w")
-       
-        # Decode
-        x = rearrange(x, "b t c h w -> (b t) c h w")
-        x = self.debed(x)
-        
-        # convert to float32 for high-precision output projection
-        x = x.to(torch.float32)
+        x = x + embed + fluid_embed        
         x = self.out_norm(x)
-        
-        # project to output fields
-        sdf = self.sdf_proj(x)
-        temp = self.temp_proj(x)
-        vel = self.vel_proj(x)
-        sdf = rearrange(sdf, "(b t) c h w -> b t c h w", b=B, t=T)
-        temp = rearrange(temp, "(b t) c h w -> b t c h w", b=B, t=T)
-        vel = rearrange(vel, "(b t) c h w -> b t c h w", b=B, t=T)
-        x = torch.cat((sdf, temp, vel), dim=2)
+        x = self.debed(x)
         
         # Skip connection from the input
         x = x + input
