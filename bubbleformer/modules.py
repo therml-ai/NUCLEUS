@@ -6,7 +6,7 @@ import wandb
 from omegaconf import OmegaConf, DictConfig
 from collections import OrderedDict
 import torch
-from torch.optim import AdamW, Adam
+from torch.optim import AdamW, Adam, Muon
 from lion_pytorch import Lion
 from torch.optim.lr_scheduler import CosineAnnealingLR
 import matplotlib.pyplot as plt
@@ -153,6 +153,8 @@ class ForecastModule(L.LightningModule):
             optimizer = Adam(self.model.parameters(), **opt_params)
         elif opt_name == "lion":
             optimizer = Lion(self.model.parameters(), **opt_params)
+        elif opt_name == "muon":
+            optimizer = Muon(self.model.parameters(), **opt_params)
         else:
             raise ValueError(f"Optimizer {opt_name} not supported")
 
@@ -337,7 +339,7 @@ class MoEConditionedForecastModule(ConditionedForecastModule):
         batch = batch.normalize(self.normalizer)
         if random.random() < 0.5:
             batch = batch.fliplr()
-        if random.random() < 0.8:
+        if random.random() < 0.9:
             batch = batch.noise(random.choice(torch.linspace(0.001, 1, 500).tolist()))
 
         inp = batch.get_input()
@@ -372,6 +374,17 @@ class MoEConditionedForecastModule(ConditionedForecastModule):
             log_dict["train/routing_loss"] = router_loss
 
         log_dict = self.moe_metrics(moe_outputs, log_dict, "train")
+
+        # Simple confirmation that the standard deviation and mean normalized reasonably
+        inp = inp.detach()
+        log_dict["train/sdf_mean"] = inp.input[..., 0, :, :].mean().item()
+        log_dict["train/temp_mean"] = inp.input[..., 1, :, :].mean().item()
+        log_dict["train/velx_mean"] = inp.input[..., 2, :, :].mean().item()
+        log_dict["train/vely_mean"] = inp.input[..., 3, :, :].mean().item()
+        log_dict["train/sdf_std"] = inp.input[..., 0, :, :].std().item()
+        log_dict["train/temp_std"] = inp.input[..., 1, :, :].std().item()
+        log_dict["train/velx_std"] = inp.input[..., 2, :, :].std().item()
+        log_dict["train/vely_std"] = inp.input[..., 3, :, :].std().item()
 
         self.default_log_dict(log_dict)
 
