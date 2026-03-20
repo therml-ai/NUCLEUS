@@ -106,17 +106,14 @@ def main(cfg: DictConfig) -> None:
     if commit_sha is None:
         print("Failed to get commit SHA. Saving in config as None.")
     cfg.commit_sha = commit_sha
-        
-    # Init wandb logger so we can use wandb.summary before training starts
-    run = wandb.init(
+
+    logger = WandbLogger(
         entity="hpcforge",
         project="bubbleformer",
         name=log_id,
         dir=cfg.log_dir,
         config=OmegaConf.to_container(cfg),
     )
-
-    logger = WandbLogger(run=run)
 
     dataset = DownsampledBubbleForecast if "64" in cfg.data_cfg.dataset else BubbleForecast
     
@@ -148,10 +145,11 @@ def main(cfg: DictConfig) -> None:
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=cfg.batch_size,
-        shuffle=True,
+        shuffle=False,
         num_workers=4,
         pin_memory=True,
         prefetch_factor=2,
+        persistent_workers=True,
         collate_fn=collate,
     )
     val_dataloader = DataLoader(
@@ -161,6 +159,7 @@ def main(cfg: DictConfig) -> None:
         num_workers=4,
         pin_memory=True,
         prefetch_factor=2,
+        persistent_workers=True,
         collate_fn=collate,
     )
     
@@ -178,16 +177,6 @@ def main(cfg: DictConfig) -> None:
     total_params = count_model_parameters(train_module.model, active=False)
     print(f"Active Model parameters: {active_params:,d}")
     print(f"Total Model parameters: {total_params:,d}")
-
-    wandb.summary["date"] = date.today().strftime("%Y-%m-%d")
-    wandb.summary["job_id"] = os.getenv("SLURM_JOB_ID")
-    wandb.summary["log_dir"] = cfg.log_dir
-    wandb.summary["model_name"] = cfg.model_cfg.name
-    wandb.summary["data_name"] = cfg.data_cfg.dataset
-    wandb.summary["normalizer_name"] = cfg.normalizer_cfg["name"]
-    wandb.summary["downsample_factor"] = cfg.data_cfg.downsample_factor
-    wandb.summary["active_params"] = active_params
-    wandb.summary["total_params"] = total_params
 
     progress_bar = RichProgressBar(
         theme=RichProgressBarTheme(
@@ -210,18 +199,19 @@ def main(cfg: DictConfig) -> None:
         num_nodes=cfg.nodes,
         strategy="auto",
         max_epochs=cfg.max_epochs,
-        accumulate_grad_batches=cfg.accumulate_grad_batches,
+        max_steps=cfg.max_steps,
+        #accumulate_grad_batches=cfg.accumulate_grad_batches,
         logger=logger,
         default_root_dir=cfg.log_dir,
         plugins=[SLURMEnvironment(requeue_signal=signal.SIGHUP)],
         enable_model_summary=True,
         num_sanity_val_steps=0,
-        gradient_clip_val=1.0,
+        #precision="bf16-mixed",
         callbacks=[
             ModelSummary(max_depth=-1), 
             ModelCheckpoint(
                 dirpath=cfg.log_dir + "/checkpoints",
-                monitor="val_loss",
+                monitor="val/loss",
                 mode="min",
                 save_top_k=2,
                 save_last=True,
@@ -240,10 +230,10 @@ def main(cfg: DictConfig) -> None:
     #)
 
     #with profile(
-    #    activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
-    #    #record_shapes=True,
-    #    #profile_memory=True,
-    #    with_stack=True,
+    #    activities=[ProfilerActivity.CUDA],
+        #record_shapes=True,
+        #profile_memory=True,
+        #with_stack=True,
     #) as prof:
 
     trainer.fit(
@@ -251,11 +241,11 @@ def main(cfg: DictConfig) -> None:
         train_dataloaders=train_dataloader,
         val_dataloaders=val_dataloader
     )
-    
+        
     #prof.export_memory_timeline("memory_timeline.html", device="cuda:0")
     #prof.export_chrome_trace("trace.json")
     #print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=10))
-    #print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
+    #rint(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
 
     #try:
     #    torch.cuda.memory._dump_snapshot("memory_snapshot.pickle")
