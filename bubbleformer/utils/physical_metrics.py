@@ -8,9 +8,6 @@ import dataclasses
 from typing import List
 from bubbleformer.utils.interp import upsample, downsample
 
-def bubble_metrics_mae(pred, target):
-    pass
-
 @dataclasses.dataclass
 class BubbleMetrics:
     bubble_labels: torch.Tensor # (B, T, H, W)
@@ -118,6 +115,22 @@ def vorticity(velx, vely, dx, dy):
     dxdy = torch.gradient(velx, spacing=dy, dim=-2)[0]
     return dydx - dxdy
 
+def eikonal(sdf, dx, dy):
+    r"""
+    This computes ||grad(phi)|| for each timestep. It returns a tensor of shape (B, T).
+    It is expected that the eikonal equation of an SDF is 1.
+    Note: even the ground truth flash-x simulations do not satisfy the eikonal equation very well. 
+    The simulation's SDF may experience a spike when bubbles nucleate and and occasionally gets reset.
+    """
+    grad_phi_y, grad_phi_x = torch.gradient(sdf, spacing=(dy, dx), dim=(-2, -1), edge_order=1)
+    grad_mag = torch.sqrt(grad_phi_y**2 + grad_phi_x**2).mean(dim=(-2, -1))
+    return grad_mag
+
+def divergence(velx, vely, dx, dy):
+    (velx_grad_x,) = torch.gradient(velx, spacing=dx, dim=-1)
+    (vely_grad_y,) = torch.gradient(vely, spacing=dy, dim=-2)
+    return (velx_grad_x + vely_grad_y).mean(dim=(-2, -1))
+
 def interface_mask(sdf):
     assert sdf.dim() == 4, "SDF must be of shape (B, T, H, W)"
     interface = torch.zeros_like(sdf, dtype=torch.bool, device="cpu")
@@ -148,17 +161,6 @@ def vapor_velocity(velx, vely, sdf):
     vapor_velx = (velx * mask).sum(dim=(-2, -1)) / mask.to(torch.int32).sum(dim=(-2, -1))
     vapor_vely = (vely * mask).sum(dim=(-2, -1)) / mask.to(torch.int32).sum(dim=(-2, -1))
     return vapor_velx, vapor_vely
-
-def eikonal(sdf, dx, dy):
-    r"""
-    This computes ||grad(phi)|| for each timestep. It returns a tensor of shape (B, T).
-    It is expected that the eikonal equation of an SDF is 1.
-    Note: even the ground truth flash-x simulations do not satisfy the eikonal equation very well. 
-    The simulation's SDF may experience a spike when bubbles nucleate and and occasionally gets reset.
-    """
-    grad_phi_y, grad_phi_x = torch.gradient(sdf, spacing=(dy, dx), dim=(-2, -1), edge_order=1)
-    grad_mag = torch.sqrt(grad_phi_y**2 + grad_phi_x**2).mean(dim=(-2, -1))
-    return grad_mag
 
 def vapor_volume(sdf, dx, dy):
     r"""
