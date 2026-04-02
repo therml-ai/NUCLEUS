@@ -1,5 +1,5 @@
 import glob
-from bubbleformer.plot.plotting import plot_temp
+from nucleus.plot.plotting import plot_temp
 import torch
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm

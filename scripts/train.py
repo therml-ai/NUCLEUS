@@ -20,12 +20,12 @@ from lightning.pytorch.callbacks import ModelSummary, Callback, ModelCheckpoint,
 from lightning.pytorch.callbacks.progress.rich_progress import RichProgressBarTheme
 from lightning.pytorch.plugins.environments import SLURMEnvironment
 
-from bubbleformer.data.batching import collate
-from bubbleformer.data.normalize import get_normalizer
-from bubbleformer.data import BubbleForecast, InMemDataset
-from bubbleformer.modules import get_train_module
-from bubbleformer.utils.set_fp32_precision import set_fp32_precision
-from bubbleformer.utils.parameter_count import count_model_parameters
+from nucleus.data.batching import collate
+from nucleus.data.normalize import get_normalizer
+from nucleus.data import BubbleForecast, InMemDataset
+from nucleus.modules import get_train_module
+from nucleus.utils.set_fp32_precision import set_fp32_precision
+from nucleus.utils.parameter_count import count_model_parameters
 
 def get_git_sha(directory: Path) -> Optional[str]:
     print(directory)
@@ -85,7 +85,7 @@ class PreemptionCheckpointCallback(Callback):
         # delay a bit to ensure the checkpoint save finishes.
         time.sleep(5)
 
-@hydra.main(version_base=None, config_path="../bubbleformer/config", config_name="default")
+@hydra.main(version_base=None, config_path="../config", config_name="default")
 def main(cfg: DictConfig) -> None:
     seed_everything(cfg.seed)
     set_fp32_precision()

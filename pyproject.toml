@@ -3,11 +3,13 @@ requires = ["hatchling >= 1.26"]
 build-backend = "hatchling.build"
 
 [project]
-name = "bubbleformer"
+name = "nucleus"
 version = "0.0.0"
-description = "Train Foundational Models om BubbleML"
+description = ""
 authors = [
-    { name="Sheikh Md Shakeel Hassan", email="sheikhh1@umd.edu" }
+    { name="Arthur Feeney", email="afeeney@uci.edu" },
+    { name="Sheikh Md Shakeel Hassan", email="sheikhh1@umd.edu" },
+    { name="Xianwei Zou", email="xianwz2@uci.edu" },
 ]
 requires-python = ">=3.12"
 dependencies = [
@@ -33,10 +35,6 @@ dependencies = [
     "joblib"
 ]
 
-# Usually stuff is expected to be in `src/bubbleformer/`
-[tool.setuptools.packages.find]
-where = ["bubbleformer"]
-
 [tool.uv.sources]
 torch = [
   # For developing on macos, need cpu torch
@@ -57,9 +55,6 @@ explicit = true
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
 explicit = true
-
-[tool.uv]
-no-build-isolation-package = ["flash-attn"]
 
 [tool.black]
 line-length = 100

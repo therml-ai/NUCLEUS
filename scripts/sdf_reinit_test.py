@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
-from bubbleformer.utils.sdf_reinit import sdf_reinit
+from nucleus.utils.sdf_reinit import sdf_reinit
 import torch
 
 def verify(phi_sdf, dx):

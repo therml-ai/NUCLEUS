@@ -27,7 +27,7 @@ class DataDistribution:
     def std(self):
         return math.sqrt(self.var())
 
-@hydra.main(config_path="../bubbleformer/config", config_name="default")    
+@hydra.main(config_path="../config", config_name="default")    
 def main(cfg: DictConfig):
         
     # Initial loop to get the extrema for histogram bins

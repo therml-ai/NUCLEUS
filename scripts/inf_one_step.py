@@ -2,13 +2,13 @@ import os
 import pathlib
 import torch
 from collections import OrderedDict
-from bubbleformer.models import get_model
+from nucleus.models import get_model
 import hydra
 from omegaconf import DictConfig
-from bubbleformer.test_one_step import run_test_one_step
-from bubbleformer.utils.set_fp32_precision import set_fp32_precision
+from nucleus.test_one_step import run_test_one_step
+from nucleus.utils.set_fp32_precision import set_fp32_precision
 
-@hydra.main(version_base=None, config_path="../bubbleformer/config", config_name="default")
+@hydra.main(version_base=None, config_path="../config", config_name="default")
 def main(cfg: DictConfig):
     set_fp32_precision()
 

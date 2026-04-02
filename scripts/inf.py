@@ -2,23 +2,23 @@ import os
 import pathlib
 import torch
 from collections import OrderedDict
-from bubbleformer.models import get_model
+from nucleus.models import get_model
 import hydra
 from omegaconf import DictConfig
-from bubbleformer.test import run_test, TestResults
-from bubbleformer.plot.plotting import (
+from nucleus.test import run_test, TestResults
+from nucleus.plot.plotting import (
     plot_rollout, 
     plot_rollout_stability, 
     plot_rollout_moe_overlay,
 )
-from bubbleformer.plot.plot_metrics import (
+from nucleus.plot.plot_metrics import (
     plot_simple_metrics,
     plot_vapor_volume_at_height,
     plot_bubble_counts,
 )
-from bubbleformer.utils.set_fp32_precision import set_fp32_precision
+from nucleus.utils.set_fp32_precision import set_fp32_precision
 
-@hydra.main(version_base=None, config_path="../bubbleformer/config", config_name="default")
+@hydra.main(version_base=None, config_path="../config", config_name="default")
 def main(cfg: DictConfig):
     set_fp32_precision()
     
