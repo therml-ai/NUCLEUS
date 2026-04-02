@@ -32,7 +32,8 @@ dependencies = [
     "scipy",
     "scikit-image",
     "seaborn",
-    "joblib"
+    "joblib",
+    "rotary-embedding-torch"
 ]
 
 [tool.uv.sources]
