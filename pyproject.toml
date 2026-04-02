@@ -33,8 +33,13 @@ dependencies = [
     "scikit-image",
     "seaborn",
     "joblib",
-    "rotary-embedding-torch"
+    "rotary-embedding-torch",
+    "imgcat"
 ]
+optional-dependencies = [
+    "natten==0.21.5+torch2100cu128",
+]
+
 
 [tool.uv.sources]
 torch = [
@@ -55,6 +60,11 @@ explicit = true
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "natten"
+url = "https://whl.natten.org"
 explicit = true
 
 [tool.black]
