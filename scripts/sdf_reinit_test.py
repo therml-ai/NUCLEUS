@@ -1,17 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
-from nucleus.utils.sdf_reinit import sdf_reinit
+from bubbleformer.utils.sdf_reinit import sdf_reinit_fast_marching, sdf_reinit_sussman, sdf_reinit_drift, verify_sdf
 import torch
 
-def verify(phi_sdf, dx):
-    # Verify it's a distance function: check |∇phi| ≈ 1
-    grad_y, grad_x = np.gradient(phi_sdf, dx)
-    grad_magnitude = np.sqrt(grad_x**2 + grad_y**2)
-    print(f"Gradient magnitude mean: {grad_magnitude.mean():.4f}")
-    print(f"Gradient magnitude std: {grad_magnitude.std():.4f}")
-
-# Example usage
 if __name__ == "__main__":
     # Create a circle
     n = 200
@@ -21,19 +13,16 @@ if __name__ == "__main__":
     
     # Initial level set: circle of radius 0.5
     radius = 0.5
-    phi_init =  - (np.sqrt(X**2 + Y**2) - radius)
+    phi_init = -(np.sqrt(X**2 + Y**2) - radius).astype(np.float32)
     
     phi_error = phi_init.copy()
-    #phi_error[phi_error > 0] = phi_error[phi_error > 0] + 0.1
-    phi_error[0:30, 0:30] = -0.5
-    #phi_error[30:40, 30:40] = -0.1
+    phi_error[0:30, 0:30] += np.random.normal(0, 0.1, size=(30, 30))
     print(phi_error)
-    
-    #torch.nn.functional.interpolate(phi_error, size=(100, 100), mode="bicubic")
     
     # Compute signed distance function
     dx = x[1] - x[0]
-    phi_sdf = sdf_reinit(torch.from_numpy(phi_error), dx, far_threshold=-0.4).numpy()
+    #phi_sdf_fast = sdf_reinit_fast_marching(torch.from_numpy(phi_error), dx, far_threshold=-0.4).numpy()
+    phi_sdf = sdf_reinit_sussman(torch.from_numpy(phi_error), dx, dx, 100).numpy()
 
     # Plot results
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(12, 5), layout="constrained")
@@ -61,6 +50,12 @@ if __name__ == "__main__":
     
     plt.savefig("sdf_reinit_test.png")
     
-    verify(phi_init, dx)
-    verify(phi_error, dx)
-    verify(phi_sdf, dx)
+    init_mean, init_std = verify_sdf(torch.from_numpy(phi_init), dx.item())
+    error_mean, error_std = verify_sdf(torch.from_numpy(phi_error), dx.item())
+    sdf_mean, sdf_std = verify_sdf(torch.from_numpy(phi_sdf), dx)
+    print(f"Initial SDF Mean: {init_mean:.4f}, Std: {init_std:.4f}")
+    print(f"Error SDF Mean: {error_mean:.4f}, Std: {error_std:.4f}")
+    print(f"SDF SDF Mean: {sdf_mean:.4f}, Std: {sdf_std:.4f}")
+    
+    drift = sdf_reinit_drift(torch.from_numpy(phi_error), torch.from_numpy(phi_sdf), dx)
+    print(f"SDF Reinit Drift (should be less than {dx}): {drift:.4f}")
