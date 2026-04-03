@@ -131,6 +131,16 @@ def divergence(velx, vely, dx, dy):
     (vely_grad_y,) = torch.gradient(vely, spacing=dy, dim=-2)
     return (velx_grad_x + vely_grad_y).mean(dim=(-2, -1))
 
+def liquid_divergence(velx, vely, sdf, dx, dy):
+    # Along bubble interfaces, the divergence is known to be non-zero.
+    # This checks points sufficiently far from liquid-vapor interfaces.
+    EPSILON = 0.05
+    (velx_grad_x,) = torch.gradient(velx, spacing=dx, dim=-1)
+    (vely_grad_y,) = torch.gradient(vely, spacing=dy, dim=-2)
+    velx_liquid_grad_x = velx_grad_x * (sdf < EPSILON)
+    vely_liquid_grad_y = vely_grad_y * (sdf < EPSILON)    
+    return (velx_liquid_grad_x + vely_liquid_grad_y).mean(dim=(-2, -1))
+
 def interface_mask(sdf):
     assert sdf.dim() == 4, "SDF must be of shape (B, T, H, W)"
     interface = torch.zeros_like(sdf, dtype=torch.bool, device="cpu")

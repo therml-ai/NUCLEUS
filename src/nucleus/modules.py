@@ -18,6 +18,8 @@ from nucleus.models import get_model
 from nucleus.utils.lr_schedulers import CosineWarmupLR, TrapezoidalLR
 #from nucleus.utils.plot_utils import wandb_sdf_plotter, wandb_temp_plotter, wandb_vel_plotter
 from nucleus.layers.moe.topk_moe import TopkRouterWithBias
+from nucleus.utils.physical_metrics import eikonal, liquid_divergence
+
 
 class ForecastModule(L.LightningModule):
     """
@@ -455,20 +457,29 @@ class MoEConditionedForecastModule(ConditionedForecastModule):
             for scheduler in schedulers:
                 scheduler.step()
                 
-        mse_loss = torch.nn.functional.mse_loss(pred.detach(), batch.target.detach())
+        with torch.no_grad():
+            mae_loss = torch.nn.functional.l1_loss(pred.detach(), batch.target.detach())
+            mse_loss = torch.nn.functional.mse_loss(pred.detach(), batch.target.detach())
+            absmax_error = (pred.detach() - batch.target.detach()).abs().max()
+            eikonal_error = abs(1 - eikonal(pred[..., 0].detach(), batch.dx[0].item(), batch.dy[0].item()))
+            liquid_divergence = liquid_divergence(pred[..., 2].detach(), pred[..., 3].detach(), batch.dx[0].item(), batch.dy[0].item())
 
         log_dict = {
             "train/loss": loss,
             "train/data_loss": data_loss,
+            "train/mae_loss": mae_loss,
             "train/mse_loss": mse_loss,
+            "train/absmax_error": absmax_error,
+            "train/eikonal_loss": eikonal_error,
+            "train/liquid_divergence": liquid_divergence,
             "train/step": self.global_step,
             "train/learning_rate": self.get_current_lr(),
         }
         if router_with_loss:
-            log_dict["train_moe/load_balance_loss"] = router_load_balance_loss
-            log_dict["train_moe/z_loss"] = router_z_loss
-
-        # compute expensive metrics less frequently--has non-trivial runtime overhead.
+            log_dict["train_moe/load_balance_loss"] = router_load_balance_loss        
+            log_dict["train_moe/z_loss"] = router_z_loss 
+        
+        # compute expensive metrics less frequently
         if self.global_step % 100 == 0:
             with torch.no_grad():
                 log_dict["train/input_mean"] = inp.input.mean().item()
