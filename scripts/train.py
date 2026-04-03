@@ -116,7 +116,7 @@ def main(cfg: DictConfig) -> None:
         config=OmegaConf.to_container(cfg),
     )
 
-    dataset = InMemForecastDataset if "64" in cfg.data_cfg.dataset else BubbleForecast
+    dataset = InMemForecastDataset if "64" in cfg.data_cfg.dataset else ForecastDataset
     
     normalizer = get_normalizer(OmegaConf.to_container(cfg.normalizer_cfg, resolve=True))
 
