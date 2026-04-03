@@ -4,7 +4,8 @@ import torch
 from collections import OrderedDict
 from nucleus.models import get_model
 import hydra
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
+from nucleus.data.normalize import get_normalizer
 from nucleus.test import run_test, TestResults
 from nucleus.plot.plotting import (
     plot_rollout, 
@@ -36,8 +37,9 @@ def main(cfg: DictConfig):
     if cfg.model_cfg.params.get("num_experts", None) is not None:
         model_kwargs["num_experts"] = cfg.model_cfg.params.num_experts
         model_kwargs["topk"] = cfg.model_cfg.params.topk
-        model_kwargs["load_balance_loss_weight"] = cfg.model_cfg.params.load_balance_loss_weight
-
+        
+    normalizer = get_normalizer(OmegaConf.to_container(cfg.normalizer_cfg, resolve=True))
+        
     model = get_model(model_name, **model_kwargs)
     model = model.cuda()
     model_data = torch.load(cfg.checkpoint_path, weights_only=False)

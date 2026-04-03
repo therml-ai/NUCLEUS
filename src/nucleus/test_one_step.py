@@ -4,11 +4,10 @@ import torch
 from torch.utils.data import DataLoader
 import numpy as np
 from nucleus.data.batching import CollatedBatch, collate
-from nucleus.data import BubbleForecast
+from nucleus.data import ForecastDataset, InMemForecastDataset
 from nucleus.layers.moe.topk_moe import TopkMoEOutput
 from nucleus.utils.physical_metrics import PhysicalMetrics, BubbleMetrics, physical_metrics, bubble_metrics
 from nucleus.utils.sdf_reinit import sdf_reinit
-from nucleus.utils.normalize import normalize, unnormalize
 import pathlib
 
 @dataclass
@@ -37,7 +36,7 @@ def run_test_one_step(model, cfg):
         print(f"Testing {test_path}")
     
         downsample_factor = 1
-        test_dataset = BubbleForecast(
+        test_dataset = ForecastDataset(
             filenames=[test_path],
             input_fields=["dfun", "temperature", "velx", "vely"],
             output_fields=["dfun", "temperature", "velx", "vely"],

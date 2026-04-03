@@ -3,11 +3,11 @@ from typing import List, Tuple
 import torch
 import numpy as np
 from nucleus.data.batching import Data
-from nucleus.data import BubbleForecast
+from nucleus.data import ForecastDataset, InMemForecastDataset
 from nucleus.layers.moe.topk_moe import TopkMoEOutput
 from nucleus.utils.physical_metrics import PhysicalMetrics, BubbleMetrics, physical_metrics, bubble_metrics
-from nucleus.utils.sdf_reinit import sdf_reinit
-from nucleus.utils.normalize import normalize, unnormalize
+from nucleus.utils.sdf_reinit import sdf_reinit_fast_marching
+
 
 @dataclass
 class TestResults:
@@ -78,22 +78,17 @@ def clip_liquid_temp(preds, fluid_params):
     temp[~liquid_mask] = torch.clamp(temp[~liquid_mask], min=fluid_params["bulk_temp"])
     return temp
     
-def run_test(model, test_file_path: str, max_timesteps: int):
-    downsample_factor = 1
-    test_dataset = BubbleForecast(
+def run_test(model, normalizer, test_file_path: str, max_timesteps: int):
+    test_dataset = InMemForecastDataset(
         filenames=[test_file_path],
         input_fields=["dfun", "temperature", "velx", "vely"],
         output_fields=["dfun", "temperature", "velx", "vely"],
-        norm="none",
-        downsample_factor=downsample_factor,
-        #future_time_window=10,
-        #history_time_window=10,
-        #time_step=2,
         future_time_window=5,
         history_time_window=5,
         time_step=1,
         start_time=400,
-        return_fluid_params=True,
+        normalizer=normalizer,
+        augment=False
     )
 
     start_time = test_dataset.start_time
@@ -109,11 +104,18 @@ def run_test(model, test_file_path: str, max_timesteps: int):
             
             batch = data.to_collated_batch()
             batch = batch.to("cuda")
-
+            
+            # these values were normalized when indexing the dataset. We need the unnormalized
+            # values so we can properly normalize/unnormalize the data fields in the inference loop.
+            bulk_temp = normalizer.unnormalize_params(batch.fluid_params_dict)[0]["bulk_temp"]
+            wall_temp = normalizer.unnormalize_params(batch.fluid_params_dict)[0]["heater"]["wallTemp"]
+            
             if len(preds) > 0:
                 batch.input = preds[-1].unsqueeze(0).to(batch.input.device)
+                batch.input = normalizer.normalize(batch.input, bulk_temp)
             tgt = batch.target
 
+            torch.compiler.cudagraph_mark_step_begin()
             output = model(batch.get_input())
             if isinstance(output, tuple):
                 pred, moe_output = output
@@ -125,20 +127,21 @@ def run_test(model, test_file_path: str, max_timesteps: int):
                 # NOTE: only tracking moe outputs for every layer. Must move to CPU to avoid mem overflow.
                 moe_outputs.append([m.detach().to('cpu') for m in moe_output])
 
-            # clip pred temperature to valid range, between liquid bulk temp and heater temp.
-            pred[:, :, 1] = torch.clamp(
-                pred[:, :, 1], 
-                min=data.fluid_params_dict["bulk_temp"], 
-                max=data.fluid_params_dict["heater"]["wallTemp"]
+            # clip pred temperature to be below wall temperature.
+            pred[..., 1] = torch.clamp(
+                pred[..., 1], 
+                max=wall_temp
             )
-            #pred[:, :, 1] = clip_liquid_temp(pred, data.fluid_params_dict)
             
+            pred = normalizer.unnormalize(pred, bulk_temp)
+            tgt = normalizer.unnormalize(tgt, bulk_temp)
+
             pred = pred.to(torch.float32).squeeze(0).detach().cpu()
             tgt = tgt.to(torch.float32).squeeze(0).detach().cpu()
-                        
+
             # Reinitialize the SDF at each timestep
-            pred[:, 0] = sdf_reinit(pred[:, 0], dx=1 / 4, far_threshold=4)
-            
+            #pred[:, 0] = sdf_reinit_fast_marching(pred[:, 0], dx=1 / 4, far_threshold=4)
+
             preds.append(pred)
             targets.append(tgt)
             timesteps.append(torch.arange(start_time+itr+skip_itrs, start_time+itr+2*skip_itrs))
@@ -146,10 +149,10 @@ def run_test(model, test_file_path: str, max_timesteps: int):
             #torch.save(inp, f"inp_{itr}.pt")
             #break
 
-    preds = torch.cat(preds, dim=0)[None, ...]         # 1, T, C, H, W
-    targets = torch.cat(targets, dim=0)[None, ...]     # 1, T, C, H, W
+    preds = torch.cat(preds, dim=0)[None, ...]         # 1, T, H, W, C
+    targets = torch.cat(targets, dim=0)[None, ...]     # 1, T, H, W, C
     timesteps = torch.cat(timesteps, dim=0)             # T,
-
+    
     fluid_params = test_dataset.fluid_params[0]
 
     print("-"*100)
@@ -159,10 +162,10 @@ def run_test(model, test_file_path: str, max_timesteps: int):
     bulk_temp = fluid_params["bulk_temp"]
     heater_temp = fluid_params["heater"]["wallTemp"]
     pred_physical_metrics = physical_metrics(
-        preds[:, :, 0], 
-        preds[:, :, 1], 
-        preds[:, :, 2], 
-        preds[:, :, 3],
+        preds[..., 0], 
+        preds[..., 1], 
+        preds[..., 2], 
+        preds[..., 3],
         # TODO: get these from dataset
         heater_min=-5.25,
         heater_max=5.25,
@@ -174,13 +177,13 @@ def run_test(model, test_file_path: str, max_timesteps: int):
         dx=dx, 
         dy=dy
     )
-    pred_bubble_metrics = bubble_metrics(preds[:, :, 0], preds[:, :, 2], preds[:, :, 3], dx=dx, dy=dy)
+    pred_bubble_metrics = bubble_metrics(preds[..., 0], preds[..., 2], preds[..., 3], dx=dx, dy=dy)
     
     target_physical_metrics = physical_metrics(
-        targets[:, :, 0], 
-        targets[:, :, 1], 
-        targets[:, :, 2], 
-        targets[:, :, 3],
+        targets[..., 0], 
+        targets[..., 1], 
+        targets[..., 2], 
+        targets[..., 3],
         # TODO: get these from dataset
         heater_min=-5.25,
         heater_max=5.25,
@@ -190,7 +193,7 @@ def run_test(model, test_file_path: str, max_timesteps: int):
         dx=dx,
         dy=dy
     )
-    target_bubble_metrics = bubble_metrics(targets[:, :, 0], targets[:, :, 2], targets[:, :, 3], dx=dx, dy=dy)
+    target_bubble_metrics = bubble_metrics(targets[..., 0], targets[..., 2], targets[..., 3], dx=dx, dy=dy)
     
     metric_distribution_pred = metric_distribution(pred_physical_metrics, pred_bubble_metrics)
     metric_distribution_target = metric_distribution(target_physical_metrics, target_bubble_metrics)
