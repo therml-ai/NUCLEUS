@@ -11,12 +11,7 @@ from nucleus.data.batching import Data
 from nucleus.data.batching import make_data
 from nucleus.data.normalize import Normalizer
 
-class InMemDataset(Dataset):
-    """
-    Dataset class for time series forecasting on the BubbleML dataset.
-    This downsamples the full dataset and stores it in cpu memory. This can be
-    used to accelerate data loading on a networked file system.
-    """
+class InMemForecastDataset(Dataset):
     def __init__(
         self,
         filenames: List[str],
@@ -28,6 +23,7 @@ class InMemDataset(Dataset):
         start_time: int,
         normalizer: Optional[Normalizer],
         augment: bool = False,
+        channels_last: bool = True,
     ):
         super().__init__()
         self.filenames = filenames
@@ -38,6 +34,7 @@ class InMemDataset(Dataset):
         self.start_time = start_time
         self.normalizer = normalizer
         self.augment = augment
+        self.channels_last = channels_last
         
         if input_fields is not None:
             self.input_fields = input_fields
@@ -55,7 +52,6 @@ class InMemDataset(Dataset):
 
         self.diff_terms = {k:[] for k in self.fields}
         self.div_terms = {k:[] for k in self.fields}
-
 
         fluid_params_files = [fname.replace(".hdf5", ".json") for fname in filenames]
         self.fluid_params = []
@@ -127,6 +123,10 @@ class InMemDataset(Dataset):
                 # [T H W C], we flip along the width (dim=2)
                 inp_data = torch.flip(inp_data, dims=[2])
                 out_data = torch.flip(out_data, dims=[2])
+                
+        if not self.channels_last:
+            inp_data = inp_data.permute(0, 3, 1, 2)
+            out_data = out_data.permute(0, 3, 1, 2)
 
         return make_data(
             input=inp_data.float(),

@@ -1,2 +1,2 @@
-from .dataset import BubbleForecast
-from .downsampled_dataset import DownsampledBubbleForecast
+from .forecast_dataset import ForecastDataset
+from .in_mem_forecast_dataset import InMemForecastDataset

@@ -22,7 +22,7 @@ from lightning.pytorch.plugins.environments import SLURMEnvironment
 
 from nucleus.data.batching import collate
 from nucleus.data.normalize import get_normalizer
-from nucleus.data import BubbleForecast, InMemDataset
+from nucleus.data import ForecastDataset, InMemForecastDataset
 from nucleus.modules import get_train_module
 from nucleus.utils.set_fp32_precision import set_fp32_precision
 from nucleus.utils.parameter_count import count_model_parameters
@@ -116,7 +116,7 @@ def main(cfg: DictConfig) -> None:
         config=OmegaConf.to_container(cfg),
     )
 
-    dataset = InMemDataset if "64" in cfg.data_cfg.dataset else BubbleForecast
+    dataset = InMemForecastDataset if "64" in cfg.data_cfg.dataset else BubbleForecast
     
     normalizer = get_normalizer(OmegaConf.to_container(cfg.normalizer_cfg, resolve=True))
 
@@ -124,23 +124,25 @@ def main(cfg: DictConfig) -> None:
         filenames=cfg.data_cfg.train_paths,
         input_fields=cfg.data_cfg.input_fields,
         output_fields=cfg.data_cfg.output_fields,
-        history_time_window=cfg.data_cfg.history_time_window,
-        future_time_window=cfg.data_cfg.future_time_window,
-        time_step=cfg.data_cfg.time_step,
-        start_time=cfg.data_cfg.start_time,
+        history_time_window=cfg.history_time_window,
+        future_time_window=cfg.future_time_window,
+        time_step=cfg.time_step,
+        start_time=cfg.start_time,
         normalizer=normalizer,
-        augment=True
+        augment=True,
+        channels_last=cfg.model_cfg.channels_last,
     )
     val_dataset = dataset(
         filenames=cfg.data_cfg.val_paths,
         input_fields=cfg.data_cfg.input_fields,
         output_fields=cfg.data_cfg.output_fields,
-        history_time_window=cfg.data_cfg.history_time_window,
-        future_time_window=cfg.data_cfg.future_time_window,
-        time_step=cfg.data_cfg.time_step,
-        start_time=cfg.data_cfg.start_time,
+        history_time_window=cfg.history_time_window,
+        future_time_window=cfg.future_time_window,
+        time_step=cfg.time_step,
+        start_time=cfg.start_time,
         normalizer=normalizer,
-        augment=False
+        augment=False,
+        channels_last=cfg.model_cfg.channels_last,
     )
 
     train_dataloader = DataLoader(

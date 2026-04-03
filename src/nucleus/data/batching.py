@@ -13,18 +13,10 @@ class Data:
     dx: float
     dy: float
     rollout_steps: Optional[int] = None
+    fluid_params_tensor: Optional[torch.Tensor] = None
     
     def to_collated_batch(self):
-        return CollatedBatch(
-            input=self.input.unsqueeze(0),
-            target=self.target.unsqueeze(0) if self.target is not None else None,
-            fluid_params_dict=[self.fluid_params_dict],
-            x_grid=self.x_grid.unsqueeze(0),
-            y_grid=self.y_grid.unsqueeze(0),
-            dx=torch.tensor([self.dx]),
-            dy=torch.tensor([self.dy]),
-            rollout_steps=torch.tensor([self.rollout_steps]) if self.rollout_steps is not None else None
-        )
+        return collate([self])
 
 @dataclasses.dataclass
 class CollatedBatch:
@@ -142,33 +134,37 @@ class CollatedBatch:
         bulk_temp = torch.tensor([d["bulk_temp"] for d in self.fluid_params_dict], device=self.input.device)
         heater_temp = torch.tensor([d["heater"]["wallTemp"] for d in self.fluid_params_dict], device=self.input.device)
         return bulk_temp, heater_temp
-            
+
     def get_fluid_params_tensor(self, device):
         return torch.tensor(
-            [
-                (
-                    d["inv_reynolds"],
-                    d["cpgas"],
-                    d["mugas"],
-                    d["rhogas"],
-                    d["thcogas"],
-                    d["stefan"],
-                    d["prandtl"],
-                    d["gravy"],
-                    d["bulk_temp"],
-                    d["heater"]["wallTemp"],
-                    d["heater"]["nucWaitTime"],
-                    d["heater"]["rcdAngle"],
-                    d["heater"]["advAngle"],
-                    d["heater"]["velContact"],
-                    d["heater"]["xMin"],
-                    d["heater"]["xMax"]
-                ) for d in self.fluid_params_dict
-            ],
+            [get_fluid_params(d) for d in self.fluid_params_dict],
             dtype=torch.float32,
             device=device
         )
+        
+def get_fluid_params(d: Dict):
+    return [
+        d["inv_reynolds"],
+        d["cpgas"],
+        d["mugas"],
+        d["rhogas"],
+        d["thcogas"],
+        d["stefan"],
+        d["prandtl"],
+        d["gravy"],
+        d["bulk_temp"],
+        d["heater"]["wallTemp"],
+        d["heater"]["nucWaitTime"],
+        d["heater"]["rcdAngle"],
+        d["heater"]["advAngle"],
+        d["heater"]["velContact"],
+        d["heater"]["xMin"],
+        d["heater"]["xMax"]
+    ]
     
+def get_fluid_params_tensor(fluid_params_dict: Dict):
+    return torch.tensor(get_fluid_params(fluid_params_dict), dtype=torch.float32)
+
 def make_data(input, target, fluid_params_dict, downsample_factor: int, rollout_steps: Optional[int] = None):
     dx = (fluid_params_dict["x_max"] - fluid_params_dict["x_min"]) / (fluid_params_dict["num_blocks_x"] * int(fluid_params_dict["nx_block"]))
     dy = (fluid_params_dict["y_max"] - fluid_params_dict["y_min"]) / (fluid_params_dict["num_blocks_y"] * int(fluid_params_dict["ny_block"]))
@@ -189,7 +185,8 @@ def make_data(input, target, fluid_params_dict, downsample_factor: int, rollout_
         y_grid=y_grid,
         dx=dx,
         dy=dy,
-        rollout_steps=rollout_steps
+        rollout_steps=rollout_steps,
+        fluid_params_tensor=get_fluid_params_tensor(fluid_params_dict)
     )
 
 def collate(data: List[Data]):    
@@ -201,4 +198,5 @@ def collate(data: List[Data]):
         y_grid=torch.stack([d.y_grid for d in data]),
         dx=torch.tensor([d.dx for d in data]),
         dy=torch.tensor([d.dy for d in data]),
+        fluid_params_tensor=torch.stack([d.fluid_params_tensor for d in data]),
     )

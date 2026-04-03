@@ -145,7 +145,7 @@ class Normalizer:
     def normalize(self, data: torch.Tensor, bulk_temp: torch.Tensor) -> torch.Tensor:
         assert data.dim() >= 4, "Data must be at least 4D (..., T, H, W, C)"
         assert data.shape[-1] == 4, "Data must have 4 channels (sdf, temp, velx, vely)"
-        assert isinstance(bulk_temp, int) or data.shape[:-4] == bulk_temp.shape, "Bulk temperature must match the batch dimensions of the data"
+        assert isinstance(bulk_temp, (int, float)) or data.shape[:-4] == bulk_temp.shape, "Bulk temperature must match the batch dimensions of the data"
         return torch.stack([
             self.normalize_sdf(data[..., 0]),
             self.normalize_temp(data[..., 1], bulk_temp),
@@ -156,7 +156,7 @@ class Normalizer:
     def unnormalize(self, data: torch.Tensor, bulk_temp: torch.Tensor) -> torch.Tensor:
         assert data.dim() >= 4, "Data must be at least 4D (..., T, H, W, C)"
         assert data.shape[-1] == 4, "Data must have 4 channels (sdf, temp, velx, vely)"
-        assert isinstance(bulk_temp, int) or data.shape[:-4] == bulk_temp.shape, "Bulk temperature must match the batch dimensions of the data"
+        assert isinstance(bulk_temp, (int, float)) or data.shape[:-4] == bulk_temp.shape, "Bulk temperature must match the batch dimensions of the data"
         return torch.stack([
             self.unnormalize_sdf(data[..., 0]),
             self.unnormalize_temp(data[..., 1], bulk_temp),
@@ -174,19 +174,19 @@ class StandardNormalizer(Normalizer):
         super().__init__(constants)
         
     def normalize_temp(self, temp: torch.Tensor, bulk_temp: torch.Tensor) -> torch.Tensor:
-        if not isinstance(bulk_temp, int):
+        if not isinstance(bulk_temp, (int, float)):
             bt = bulk_temp[..., None, None, None] # (..., 1, 1, 1) for broadcasting T, H, W
         else:
             bt = bulk_temp
         return ((temp - bt) - self.constants.temp_mean) / self.constants.temp_std
     
     def unnormalize_temp(self, temp: torch.Tensor, bulk_temp: torch.Tensor) -> torch.Tensor:
-        if not isinstance(bulk_temp, int):
+        if not isinstance(bulk_temp, (int, float)):
             bt = bulk_temp[..., None, None, None] # (..., 1, 1, 1) for broadcasting T, H, W
         else:
             bt = bulk_temp
         return temp * self.constants.temp_std + self.constants.temp_mean + bt
-    
+
 def get_normalizer(normalizer_cfg: dict) -> Normalizer:
     constants = NormalizerConstants(
         max_domain_size=normalizer_cfg["max_domain_size"],

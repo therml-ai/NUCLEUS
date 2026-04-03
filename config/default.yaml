@@ -4,7 +4,9 @@ seed: 42
 nodes: 1
 devices: 1
 
-max_epochs: 40
+max_epochs:
+max_steps: 40000
+val_check_interval: 2000
 batch_size: 16
 accumulate_grad_batches: 1
 
@@ -26,5 +28,5 @@ defaults:
   - data_cfg: poolboiling64
   - model_cfg: neighbor_moe/neighbor_moe_exp
   - optim_cfg: adamw
-  - scheduler_cfg: cosine_warmup
+  - scheduler_cfg: trapezoidal
   - normalizer_cfg: standard

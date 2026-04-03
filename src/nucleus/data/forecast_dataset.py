@@ -9,7 +9,7 @@ from torch.utils.data import Dataset
 from nucleus.data.batching import make_data
 from nucleus.data.normalize import Normalizer
 
-class BubbleForecast(Dataset):
+class ForecastDataset(Dataset):
     """
     Dataset class for time series forecasting on the BubbleML dataset
     """
@@ -123,11 +123,9 @@ class BubbleForecast(Dataset):
         
         if self.augment:
             if random.random() < 0.5:
+                # [T H W C], we flip along the width (dim=2)
                 inp_data = torch.flip(inp_data, dims=[2])
                 out_data = torch.flip(out_data, dims=[2])
-            if random.random() < 0.9:
-                scale = random.choice(self.noise_scales)
-                inp_data = inp_data + torch.normal(0, scale, inp_data.shape, device=inp_data.device)
 
         return make_data(
             input=inp_data.float(),
