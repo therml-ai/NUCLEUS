@@ -36,10 +36,6 @@ dependencies = [
     "rotary-embedding-torch",
     "imgcat"
 ]
-optional-dependencies = [
-    "natten==0.21.5+torch2100cu128",
-]
-
 
 [tool.uv.sources]
 torch = [
