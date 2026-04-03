@@ -71,14 +71,8 @@ def plot_vorticity(ax, vorticity: torch.Tensor, min_vort=None, max_vort=None, ti
     return im
 
 def plot_rollout_stability(save_dir: str, pred_rollout: torch.Tensor, target_rollout: torch.Tensor):
-    sdf = pred_rollout[:, 0, :, :]
-    temp = pred_rollout[:, 1, :, :]
-    velx = pred_rollout[:, 2, :, :]
-    vely = pred_rollout[:, 3, :, :]
-    target_sdf = target_rollout[:, 0, :, :]
-    target_temp = target_rollout[:, 1, :, :]
-    target_velx = target_rollout[:, 2, :, :]
-    target_vely = target_rollout[:, 3, :, :]
+    sdf, temp, velx, vely = pred_rollout.unbind(dim=-1)
+    target_sdf, target_temp, target_velx, target_vely = target_rollout.unbind(dim=-1)
     
     # Rollout stability of predicted and target rollouts (i.e. the norm of the differences between consecutive timesteps)
     fig, axs = plt.subplots(1, 4, figsize=(10, 5), layout="constrained")
@@ -126,30 +120,38 @@ def plot_rollout(
     step_size: int
 ):
     def make_plot(timestep, rollout):
-        sdf = torch.flipud(rollout[timestep, 0, :, :])
-        temp = torch.flipud(rollout[timestep, 1, :, :])
-        velx = torch.flipud(rollout[timestep, 2, :, :])
-        vely = torch.flipud(rollout[timestep, 3, :, :])
+        sdf, temp, velx, vely = rollout[timestep].unbind(dim=-1)
+        sdf = torch.flipud(sdf)
+        temp = torch.flipud(temp)
+        velx = torch.flipud(velx)
+        vely = torch.flipud(vely)
+        
         vel_mag = torch.sqrt(velx**2 + vely**2)
         vort = vorticity(velx, vely, 1/4, 1/4)
         
-        fig, axs = plt.subplots(1, 4, figsize=(10, 5), layout="constrained")
+        fig, axs = plt.subplots(1, 3, figsize=(10, 5), layout="constrained")
         
         # 1. Plot the SDF
-        im = plot_sdf(axs[0], sdf)
+        im = plot_sdf(axs[0], sdf, title=f"SDF {timestep}")
         plt.colorbar(im, ax=axs[0], fraction=0.04, pad=0.05)
         
         # 2. Plot the temperature
-        im = plot_temp(axs[1], temp, test_results.fluid_params["bulk_temp"], test_results.fluid_params["heater"]["wallTemp"])
+        im = plot_temp(
+            axs[1], 
+            temp, 
+            test_results.fluid_params["bulk_temp"], 
+            test_results.fluid_params["heater"]["wallTemp"],
+            title=f"Temperature {timestep}"
+        )
         plt.colorbar(im, ax=axs[1], fraction=0.04, pad=0.05)
         
         # 3. Plot the velocity magnitude
-        im = plot_vel_mag(axs[2], vel_mag)
+        im = plot_vel_mag(axs[2], vel_mag, title=f"Vel Norm {timestep}")
         plt.colorbar(im, ax=axs[2], fraction=0.04, pad=0.05)
         
         # 4. Plot the vorticity
-        im = plot_vorticity(axs[3], vort)
-        plt.colorbar(im, ax=axs[3], fraction=0.04, pad=0.05)
+        #im = plot_vorticity(axs[3], vort, title=f"Vorticity {timestep}")
+        #plt.colorbar(im, ax=axs[3], fraction=0.04, pad=0.05)
         
         plt.savefig(f"{save_dir}/rollout_{str(timestep).zfill(4)}.png", bbox_inches="tight")
         plt.close()
@@ -168,9 +170,9 @@ def plot_rollout_moe_overlay(
     step_size: int
 ):
     def make_plot(timestep, rollout):
-        temp = torch.flipud(rollout[timestep, 1, :, :])
-        velx = torch.flipud(rollout[timestep, 2, :, :])
-        vely = torch.flipud(rollout[timestep, 3, :, :])
+        temp = torch.flipud(rollout[timestep, ..., 1])
+        velx = torch.flipud(rollout[timestep, ..., 2])
+        vely = torch.flipud(rollout[timestep, ..., 3])
         vel_mag = torch.sqrt(velx**2 + vely**2)
         
         # Model processes five frames at a time, so divide by 5 to get correct index into model output.
