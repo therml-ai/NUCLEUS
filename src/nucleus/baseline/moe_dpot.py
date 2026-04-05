@@ -33,7 +33,8 @@ from lightning.pytorch.loggers.wandb import WandbLogger
 from lightning.pytorch.callbacks import ModelSummary, ModelCheckpoint
 
 from nucleus.data.batching import CollatedBatch
-from nucleus.data import InMemForecastDataset, get_normalizer
+from nucleus.data.in_mem_forecast_dataset import InMemForecastDataset
+from nucleus.data.normalize import get_normalizer
 from nucleus.utils.parameter_count import count_model_parameters
 
 ACTIVATION = {"gelu": nn.GELU()}
@@ -220,7 +221,7 @@ class AFNO2D(nn.Module):
         # self.scale = 0.02
         self.scale = 1 / (self.block_size * self.block_size * self.hidden_size_factor)
 
-        self.act = ACTIVATION[act]
+        self.act = act
 
         self.w1 = nn.Parameter(self.scale * torch.rand(2, self.num_blocks, self.block_size, self.block_size * self.hidden_size_factor))
         self.b1 = nn.Parameter(self.scale * torch.rand(2, self.num_blocks, self.block_size * self.hidden_size_factor))
@@ -306,15 +307,13 @@ class Block(nn.Module):
         self.norm1 = torch.nn.GroupNorm(8, width)
         self.width = width
         self.modes = modes
-        self.act = ACTIVATION[act]
+        self.act = act
 
         if mixing_type == "afno":
             self.filter = AFNO2D(width = width, num_blocks=n_blocks, sparsity_threshold=0.01, channel_first=channel_first, modes=modes,
                                  hard_thresholding_fraction=1, hidden_size_factor=1, act=act)
 
         self.norm2 = torch.nn.GroupNorm(8, width)
-
-
 
         mlp_hidden_dim = int(width * mlp_ratio)
         self.MoE = MoEImage(width, mlp_hidden_dim, output_channels=width, num_experts=16, shared_experts_num=2, top_k=4, is_finetune=is_finetune)
@@ -341,7 +340,7 @@ class Block(nn.Module):
         return x, loss_gate
 
 class PatchEmbed(nn.Module):
-    def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=768, out_dim=128,act='gelu'):
+    def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=768, out_dim=128, act='gelu'):
         super().__init__()
         img_size = (img_size, img_size)
         patch_size = (patch_size, patch_size)
@@ -373,9 +372,9 @@ class TimeAggregator(nn.Module):
         self.out_channels = out_channels
         self.type = type
         if self.type == 'mlp':
-            self.w = nn.Parameter(1/(n_timesteps * out_channels**0.5) *torch.randn(n_timesteps, out_channels, out_channels),requires_grad=True)   # initialization could be tuned
+            self.w = nn.Parameter(1/(n_timesteps * out_channels**0.5) *torch.randn(n_timesteps, out_channels, out_channels), requires_grad=True)   # initialization could be tuned
         elif self.type == 'exp_mlp':
-            self.w = nn.Parameter(1/(n_timesteps * out_channels**0.5) *torch.randn(n_timesteps, out_channels, out_channels),requires_grad=True)   # initialization could be tuned
+            self.w = nn.Parameter(1/(n_timesteps * out_channels**0.5) *torch.randn(n_timesteps, out_channels, out_channels), requires_grad=True)   # initialization could be tuned
             self.gamma = nn.Parameter(2**torch.linspace(-10,10, out_channels).unsqueeze(0),requires_grad=True)  # 1, C
     
     # B, X, Y, T, C
@@ -407,9 +406,17 @@ class MoEPOTNet(L.LightningModule):
         self.num_features = self.embed_dim = embed_dim= self.config["embed_dim"]  # num_features for consistency with other models
         self.mlp_ratio = self.config["mlp_ratio"]
         self.act = ACTIVATION[self.config["act"]]
+        self.out_layer_dim = self.config["out_layer_dim"]
         img_size = self.config["img_size"]
         patch_size = self.config["patch_size"]
-        self.patch_embed = PatchEmbed(img_size=img_size, patch_size=patch_size, in_chans=self.in_channels + 3, embed_dim=self.out_channels * patch_size + 3, out_dim=embed_dim,act=act)
+        self.patch_embed = PatchEmbed(
+            img_size=img_size,
+            patch_size=patch_size,
+            in_chans=self.in_channels + 3,
+            embed_dim=self.out_channels * patch_size + 3,
+            out_dim=embed_dim,
+            act=self.config["act"],
+        )
         self.latent_size = self.patch_embed.out_size
         self.pos_embed = nn.Parameter(torch.zeros(1, embed_dim, self.patch_embed.out_size[0], self.patch_embed.out_size[1]))
         self.normalize = self.config["normalize"]
