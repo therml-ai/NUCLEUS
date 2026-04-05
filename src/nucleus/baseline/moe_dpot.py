@@ -27,6 +27,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.nn.modules.loss import _WeightedLoss
+from typing import Tuple
 import numpy as np
 from einops import rearrange
 import lightning as L
@@ -75,7 +76,6 @@ class SimpleLpLoss(_WeightedLoss):
                 return torch.sum(torch.sum(diff_norms/y_norms, dim=-1) / msk_channels)    #### go this branch
         else:
             return torch.sum(diff_norms/y_norms, dim=-1) / msk_channels
-
 
 class ConvFeatureExtractor(nn.Module):
     def __init__(self, input_channels, output_channels):
@@ -542,7 +542,7 @@ class MoEPOTNet(L.LightningModule):
         return grid
 
     ### in/out: B, X, Y, T, C
-    def forward(self, x):
+    def forward(self, x) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         B, _, _, T, _ = x.shape # [8,128,128,10,1]
         if self.normalize:
             mu, sigma = x.mean(dim=(1,2,3),keepdim=True), x.std(dim=(1,2,3),keepdim=True) + 1e-6    # B,1,1,1,C
@@ -600,26 +600,77 @@ class MoEPOTNet(L.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config["lr"])
         return optimizer
-
+    
+    def _cls_label(self, batch: CollatedBatch):
+        r"""
+        Constructs class labels with shape [B, len(table)].
+        This is used for the CrossEntropyLoss.
+        """
+        table = [
+            "subcooled_fc72",
+            "saturated_fc72",
+            "subcooled_r515b",
+            "saturated_r515b",
+            "subcooled_ln2",
+            "saturated_ln2",
+        ]
+        labels = []
+        labels_one_hot = []
+        for i, d in enumerate(batch.fluid_params_dict):
+            setup = d["setup"]
+            liquid = d["liquid"]
+            key = f"{liquid}_{setup}"
+            index = table.index(key)
+            one_hot = torch.zeros(len(table))
+            one_hot[index] = 1
+            labels.append(index)
+            labels_one_hot.append(one_hot)
+        return (
+            torch.tensor(labels, device=batch.input.device, dtype=torch.long), 
+            torch.stack(labels_one_hot, dim=0, device=batch.input.device, dtype=torch.float)
+        )
+        
     def training_step(self, batch: CollatedBatch, batch_idx: int):
+        cls_indices_target, cls_one_hot_target = self._cls_label(batch)
+        
         pred, cls_pred, router_loss_total = self.forward(batch.input)
-        loss = self.criterion(pred, batch.target)
+        data_loss = self.data_loss(pred, batch.target)
+        cls_loss = self.cls_loss(cls_pred, cls_indices_target)
+        loss = data_loss + cls_loss + router_loss_total * self.router_loss_weight
+        
+        cls_pred_label = torch.argmax(cls_pred, dim=1)
+        cls_pred_correct = (cls_pred_label == cls_indices_target).float().sum() / cls_pred_label.numel()
+        
+        self.log("train/data_loss", data_loss)
+        self.log("train/cls_loss", cls_loss)
+        self.log("train/unweighted_router_loss", router_loss_total)
         self.log("train/loss", loss)
+        self.log("train/cls_pred_correct", cls_pred_correct)
         return loss
     
     def validation_step(self, batch: CollatedBatch, batch_idx: int):
+        cls_indices_target, cls_one_hot_target = self._cls_label(batch)
+        
         pred, cls_pred, router_loss_total = self.forward(batch.input)
-        loss = self.criterion(pred, batch.target)
+        data_loss = self.data_loss(pred, batch.target)
+        cls_loss = self.cls_loss(cls_pred, cls_indices_target)
+        loss = data_loss + cls_loss + router_loss_total * self.router_loss_weight
+        
+        cls_pred_label = torch.argmax(cls_pred, dim=1)
+        cls_pred_correct = (cls_pred_label == cls_indices_target).float().sum() / cls_pred_label.numel()
+        
+        self.log("val/data_loss", data_loss)
+        self.log("val/cls_loss", cls_loss)
+        self.log("val/unweighted_router_loss", router_loss_total)
         self.log("val/loss", loss)
+        self.log("val/cls_pred_correct", cls_pred_correct)
         return loss
     
 @hydra.main(version_base=None, config_path="../../../config", config_name="moe_dpot")
 def main(cfg: DictConfig) -> None:
     
     print(cfg)
-    
-    #normalizer = get_normalizer(OmegaConf.to_container(cfg.normalizer_cfg, resolve=True))
-    
+
     train_dataset = InMemForecastDataset(
         filenames=cfg.data_cfg.train_paths,
         input_fields=cfg.data_cfg.input_fields,
