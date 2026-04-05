@@ -1,6 +1,6 @@
 name: neighbor_moe
 train_module_name: moe_conditioned_forecast
-channels_last: True
+layout: "t h w c"
 params:
   patch_size: 4
   embed_dim: 512
