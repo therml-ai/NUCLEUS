@@ -1,0 +1,28 @@
+log_dir: /pub/afeeney/bubbleformer_logs
+seed: 42
+
+nodes: 1
+devices: 1
+
+max_epochs:
+max_steps: 40000
+val_check_interval: 2000
+batch_size: 16
+accumulate_grad_batches: 1
+
+history_time_window: 8
+future_time_window: 8
+time_step: 1
+start_time: 100
+
+checkpoint_path:
+commit_sha:
+
+# MoE-DPOT specific settings
+
+defaults:
+  - _self_
+  - data_cfg: poolboiling64
+  - optim_cfg: adamw
+  - scheduler_cfg: trapezoidal
+  - normalizer_cfg: standard
