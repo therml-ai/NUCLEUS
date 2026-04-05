@@ -10,6 +10,7 @@ from torch.utils.data import Dataset
 from nucleus.data.batching import Data
 from nucleus.data.batching import make_data
 from nucleus.data.normalize import Normalizer
+from nucleus.data.layout import convert_layout
 
 class InMemForecastDataset(Dataset):
     def __init__(
@@ -23,7 +24,7 @@ class InMemForecastDataset(Dataset):
         start_time: int,
         normalizer: Optional[Normalizer],
         augment: bool = False,
-        channels_last: bool = True,
+        layout: str = "t h w c"
     ):
         super().__init__()
         self.filenames = filenames
@@ -34,7 +35,7 @@ class InMemForecastDataset(Dataset):
         self.start_time = start_time
         self.normalizer = normalizer
         self.augment = augment
-        self.channels_last = channels_last
+        self.layout = layout
         
         if input_fields is not None:
             self.input_fields = input_fields
@@ -69,6 +70,7 @@ class InMemForecastDataset(Dataset):
                 field_data = torch.tensor(hdf5_file[field][...])
                 d[field] = field_data
             data.append(d)
+            hdf5_file.close()
         return data
     
     def _get_traj_len(self, traj_len: int) -> int:
@@ -124,9 +126,8 @@ class InMemForecastDataset(Dataset):
                 inp_data = torch.flip(inp_data, dims=[2])
                 out_data = torch.flip(out_data, dims=[2])
                 
-        if not self.channels_last:
-            inp_data = inp_data.permute(0, 3, 1, 2)
-            out_data = out_data.permute(0, 3, 1, 2)
+        inp_data = convert_layout(inp_data, self.layout)
+        out_data = convert_layout(out_data, self.layout)
 
         return make_data(
             input=inp_data.float(),

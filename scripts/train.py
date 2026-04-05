@@ -130,7 +130,7 @@ def main(cfg: DictConfig) -> None:
         start_time=cfg.start_time,
         normalizer=normalizer,
         augment=True,
-        channels_last=cfg.model_cfg.channels_last,
+        layout=cfg.model_cfg.layout
     )
     val_dataset = dataset(
         filenames=cfg.data_cfg.val_paths,
@@ -142,7 +142,7 @@ def main(cfg: DictConfig) -> None:
         start_time=cfg.start_time,
         normalizer=normalizer,
         augment=False,
-        channels_last=cfg.model_cfg.channels_last,
+        layout=cfg.model_cfg.layout
     )
 
     train_dataloader = DataLoader(

@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset
 from nucleus.data.batching import make_data
 from nucleus.data.normalize import Normalizer
+from nucleus.data.layout import convert_layout
 
 class ForecastDataset(Dataset):
     """
@@ -24,6 +25,7 @@ class ForecastDataset(Dataset):
         start_time: int,
         normalizer: Optional[Normalizer],
         augment: bool,
+        layout: str = "t h w c"
     ):
         super().__init__()
         self.filenames = filenames
@@ -43,6 +45,7 @@ class ForecastDataset(Dataset):
         self.normalizer = normalizer
         self.augment = augment
         self.noise_scales = torch.linspace(0.001, 1, 500).tolist()
+        self.layout = layout
         
         self.data = None
 
@@ -126,6 +129,9 @@ class ForecastDataset(Dataset):
                 # [T H W C], we flip along the width (dim=2)
                 inp_data = torch.flip(inp_data, dims=[2])
                 out_data = torch.flip(out_data, dims=[2])
+                
+        inp_data = convert_layout(inp_data, self.layout)
+        out_data = convert_layout(out_data, self.layout)
 
         return make_data(
             input=inp_data.float(),
