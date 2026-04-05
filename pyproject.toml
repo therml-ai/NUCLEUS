@@ -34,7 +34,8 @@ dependencies = [
     "seaborn",
     "joblib",
     "rotary-embedding-torch",
-    "imgcat"
+    "imgcat",
+    "pytest"
 ]
 
 [tool.uv.sources]
