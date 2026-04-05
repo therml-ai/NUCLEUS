@@ -34,7 +34,7 @@ import lightning as L
 from lightning.pytorch.loggers.wandb import WandbLogger
 from lightning.pytorch.callbacks import ModelSummary, ModelCheckpoint
 
-from nucleus.data.batching import CollatedBatch
+from nucleus.data.batching import CollatedBatch, collate
 from nucleus.data.in_mem_forecast_dataset import InMemForecastDataset
 from nucleus.data.normalize import get_normalizer
 from nucleus.utils.parameter_count import count_model_parameters
@@ -430,7 +430,8 @@ class MoEPOTNet(L.LightningModule):
     def __init__(
             self, 
             config: dict,
-            router_loss_weight: float
+            router_loss_weight: float,
+            lr: float
         ):
         super().__init__()
         self.save_hyperparameters(config)
@@ -462,11 +463,7 @@ class MoEPOTNet(L.LightningModule):
         self.time_agg = self.config["time_agg"]
         self.n_cls = self.config["n_cls"]
         self.is_finetune = self.config["is_finetune"]
-        
-        self.router_loss_weight = router_loss_weight
-        self.data_loss = SimpleLpLoss(size_average=False)
-        self.cls_loss = nn.CrossEntropyLoss()
-
+    
         h = img_size // patch_size
         w = h // 2 + 1
 
@@ -510,6 +507,12 @@ class MoEPOTNet(L.LightningModule):
 
         torch.nn.init.trunc_normal_(self.pos_embed, std=.02)
         self.mixing_type = self.config["mixing_type"]
+        
+        # Lightning Module settings
+        self.router_loss_weight = router_loss_weight
+        self.lr = lr
+        self.data_loss = SimpleLpLoss(size_average=False)
+        self.cls_loss = nn.CrossEntropyLoss()
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
@@ -598,7 +601,7 @@ class MoEPOTNet(L.LightningModule):
         return string_repr
         
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config["lr"])
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
         return optimizer
     
     def _cls_label(self, batch: CollatedBatch):
@@ -606,14 +609,9 @@ class MoEPOTNet(L.LightningModule):
         Constructs class labels with shape [B, len(table)].
         This is used for the CrossEntropyLoss.
         """
-        table = [
-            "subcooled_fc72",
-            "saturated_fc72",
-            "subcooled_r515b",
-            "saturated_r515b",
-            "subcooled_ln2",
-            "saturated_ln2",
-        ]
+        liquids = ["fc72", "r515b", "ln2"]
+        setups = ["subcooled", "saturated"]
+        table = [f"{liquid}_{setup}" for setup in setups for liquid in liquids]
         labels = []
         labels_one_hot = []
         for i, d in enumerate(batch.fluid_params_dict):
@@ -621,13 +619,13 @@ class MoEPOTNet(L.LightningModule):
             liquid = d["liquid"]
             key = f"{liquid}_{setup}"
             index = table.index(key)
-            one_hot = torch.zeros(len(table))
+            one_hot = torch.zeros(len(table), device=batch.input.device, dtype=torch.float)
             one_hot[index] = 1
             labels.append(index)
             labels_one_hot.append(one_hot)
         return (
             torch.tensor(labels, device=batch.input.device, dtype=torch.long), 
-            torch.stack(labels_one_hot, dim=0, device=batch.input.device, dtype=torch.float)
+            torch.stack(labels_one_hot, dim=0)
         )
         
     def training_step(self, batch: CollatedBatch, batch_idx: int):
@@ -641,11 +639,18 @@ class MoEPOTNet(L.LightningModule):
         cls_pred_label = torch.argmax(cls_pred, dim=1)
         cls_pred_correct = (cls_pred_label == cls_indices_target).float().sum() / cls_pred_label.numel()
         
+        mae_loss = torch.nn.functional.l1_loss(pred, batch.target)
+        mse_loss = torch.nn.functional.mse_loss(pred, batch.target)
+        absmax_error = (pred - batch.target).abs().max()
+        
         self.log("train/data_loss", data_loss)
         self.log("train/cls_loss", cls_loss)
         self.log("train/unweighted_router_loss", router_loss_total)
         self.log("train/loss", loss)
         self.log("train/cls_pred_correct", cls_pred_correct)
+        self.log("train/mae_loss", mae_loss)
+        self.log("train/mse_loss", mse_loss)
+        self.log("train/absmax_error", absmax_error)
         return loss
     
     def validation_step(self, batch: CollatedBatch, batch_idx: int):
@@ -659,11 +664,18 @@ class MoEPOTNet(L.LightningModule):
         cls_pred_label = torch.argmax(cls_pred, dim=1)
         cls_pred_correct = (cls_pred_label == cls_indices_target).float().sum() / cls_pred_label.numel()
         
+        mae_loss = torch.nn.functional.l1_loss(pred, batch.target)
+        mse_loss = torch.nn.functional.mse_loss(pred, batch.target)
+        absmax_error = (pred - batch.target).abs().max()
+        
         self.log("val/data_loss", data_loss)
         self.log("val/cls_loss", cls_loss)
         self.log("val/unweighted_router_loss", router_loss_total)
         self.log("val/loss", loss)
         self.log("val/cls_pred_correct", cls_pred_correct)
+        self.log("train/mae_loss", mae_loss)
+        self.log("train/mse_loss", mse_loss)
+        self.log("train/absmax_error", absmax_error)
         return loss
     
 @hydra.main(version_base=None, config_path="../../../config", config_name="moe_dpot")
@@ -675,8 +687,8 @@ def main(cfg: DictConfig) -> None:
         filenames=cfg.data_cfg.train_paths,
         input_fields=cfg.data_cfg.input_fields,
         output_fields=cfg.data_cfg.output_fields,
-        history_time_window=cfg.data_cfg.history_time_window,
-        future_time_window=cfg.data_cfg.future_time_window,
+        history_time_window=cfg.model_cfg.in_timesteps,
+        future_time_window=cfg.model_cfg.out_timesteps,
         time_step=cfg.data_cfg.time_step,
         start_time=cfg.data_cfg.start_time,
         normalizer=None,
@@ -687,8 +699,8 @@ def main(cfg: DictConfig) -> None:
         filenames=cfg.data_cfg.val_paths,
         input_fields=cfg.data_cfg.input_fields,
         output_fields=cfg.data_cfg.output_fields,
-        history_time_window=cfg.data_cfg.history_time_window,
-        future_time_window=cfg.data_cfg.future_time_window,
+        history_time_window=cfg.model_cfg.in_timesteps,
+        future_time_window=cfg.model_cfg.out_timesteps,
         time_step=cfg.data_cfg.time_step,
         start_time=cfg.data_cfg.start_time,
         normalizer=None,
@@ -704,6 +716,7 @@ def main(cfg: DictConfig) -> None:
         pin_memory=True,
         prefetch_factor=2,
         persistent_workers=True,
+        collate_fn=collate,
     )
     val_dataloader = DataLoader(
         val_dataset,
@@ -713,6 +726,7 @@ def main(cfg: DictConfig) -> None:
         pin_memory=True,
         prefetch_factor=2,
         persistent_workers=True,
+        collate_fn=collate,
     )
     
     # Setup Wandb Logger.
@@ -766,7 +780,8 @@ def main(cfg: DictConfig) -> None:
     
     model = MoEPOTNet(
         OmegaConf.to_container(cfg.model_cfg),
-        cfg.router_loss_weight
+        cfg.router_loss_weight,
+        cfg.lr
     )
     
     total_params = count_model_parameters(model, active=False)

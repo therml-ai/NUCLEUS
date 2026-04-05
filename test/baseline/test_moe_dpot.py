@@ -26,7 +26,7 @@ def test_moe_dpot(device):
         "out_layer_dim": 256,
     }
 
-    model = MoEPOTNet(config, 0.1).to(device)
+    model = MoEPOTNet(config, 0.1, 0.001).to(device)
     
     input = torch.randn(4, 64, 64, 8, 4).to(device).requires_grad_(True)
     output, cls_pred, router_loss_total = model(input)

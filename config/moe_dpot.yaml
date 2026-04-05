@@ -39,6 +39,7 @@ model_cfg:
   out_layer_dim: 256
 
 router_loss_weight: 0.01
+lr: 1e-3
 layout: "h w t c"
 
 defaults:
