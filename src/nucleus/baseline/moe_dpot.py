@@ -26,6 +26,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
+from torch.nn.modules.loss import _WeightedLoss
 import numpy as np
 from einops import rearrange
 import lightning as L
@@ -38,6 +39,43 @@ from nucleus.data.normalize import get_normalizer
 from nucleus.utils.parameter_count import count_model_parameters
 
 ACTIVATION = {"gelu": nn.GELU()}
+
+class SimpleLpLoss(_WeightedLoss):
+    def __init__(self, d=2, p=2, size_average=True, reduction=True, return_comps=False):
+        super(SimpleLpLoss, self).__init__()
+
+        #Dimension and Lp-norm type are postive
+        assert d > 0 and p > 0
+
+        self.d = d
+        self.p = p
+        self.reduction = reduction
+        self.size_average = size_average
+        self.return_comps = return_comps
+
+    def forward(self, x, y, mask=None):
+        num_examples = x.size()[0]
+        # Lp loss 2
+        if mask is not None:##TODO: will be meaned by n_channels for single channel data
+            x = x * mask
+            y = y * mask
+
+            ## compute effective channels
+            # msk_channels = mask.sum(dim=(1,2,3),keepdim=False).count_nonzero(dim=-1) # B, 1
+            msk_channels = mask.sum(dim=list(range(1, mask.ndim-1)),keepdim=False).count_nonzero(dim=-1) # B, 1
+        else:
+            msk_channels = x.shape[-1]
+
+        diff_norms = torch.norm(x.reshape(num_examples,-1, x.shape[-1]) - y.reshape(num_examples,-1,x.shape[-1]), self.p, dim=1)    ##N, C
+        y_norms = torch.norm(y.reshape(num_examples,-1, y.shape[-1]), self.p, dim=1) + 1e-8
+        if self.reduction:
+            if self.size_average:
+                    return torch.mean(diff_norms/y_norms)          ## deprecated
+            else:
+                return torch.sum(torch.sum(diff_norms/y_norms, dim=-1) / msk_channels)    #### go this branch
+        else:
+            return torch.sum(diff_norms/y_norms, dim=-1) / msk_channels
+
 
 class ConvFeatureExtractor(nn.Module):
     def __init__(self, input_channels, output_channels):
@@ -391,7 +429,8 @@ class TimeAggregator(nn.Module):
 class MoEPOTNet(L.LightningModule):
     def __init__(
             self, 
-            config: dict
+            config: dict,
+            router_loss_weight: float
         ):
         super().__init__()
         self.save_hyperparameters(config)
@@ -423,6 +462,10 @@ class MoEPOTNet(L.LightningModule):
         self.time_agg = self.config["time_agg"]
         self.n_cls = self.config["n_cls"]
         self.is_finetune = self.config["is_finetune"]
+        
+        self.router_loss_weight = router_loss_weight
+        self.data_loss = SimpleLpLoss(size_average=False)
+        self.cls_loss = nn.CrossEntropyLoss()
 
         h = img_size // patch_size
         w = h // 2 + 1
@@ -442,11 +485,9 @@ class MoEPOTNet(L.LightningModule):
                 is_finetune=self.is_finetune)
             for i in range(self.config["depth"])])
 
-
         if self.normalize:
             self.scale_feats_mu = nn.Linear(2 * self.in_channels, self.embed_dim)
             self.scale_feats_sigma = nn.Linear(2 * self.in_channels, self.embed_dim)
-
 
         self.cls_head = nn.Sequential(
             nn.Linear(embed_dim, embed_dim),
@@ -561,23 +602,23 @@ class MoEPOTNet(L.LightningModule):
         return optimizer
 
     def training_step(self, batch: CollatedBatch, batch_idx: int):
-        pred = self.forward(batch.input)
+        pred, cls_pred, router_loss_total = self.forward(batch.input)
         loss = self.criterion(pred, batch.target)
         self.log("train/loss", loss)
         return loss
     
     def validation_step(self, batch: CollatedBatch, batch_idx: int):
-        pred = self.forward(batch.input)
+        pred, cls_pred, router_loss_total = self.forward(batch.input)
         loss = self.criterion(pred, batch.target)
         self.log("val/loss", loss)
         return loss
     
-@hydra.main(version_base=None, config_path="../config", config_name="moe_dpot")
+@hydra.main(version_base=None, config_path="../../../config", config_name="moe_dpot")
 def main(cfg: DictConfig) -> None:
     
     print(cfg)
     
-    normalizer = get_normalizer(OmegaConf.to_container(cfg.normalizer_cfg, resolve=True))
+    #normalizer = get_normalizer(OmegaConf.to_container(cfg.normalizer_cfg, resolve=True))
     
     train_dataset = InMemForecastDataset(
         filenames=cfg.data_cfg.train_paths,
@@ -587,8 +628,9 @@ def main(cfg: DictConfig) -> None:
         future_time_window=cfg.data_cfg.future_time_window,
         time_step=cfg.data_cfg.time_step,
         start_time=cfg.data_cfg.start_time,
-        normalizer=normalizer,
-        augment=True
+        normalizer=None,
+        augment=True,
+        layout=cfg.layout
     )
     val_dataset = InMemForecastDataset(
         filenames=cfg.data_cfg.val_paths,
@@ -598,8 +640,9 @@ def main(cfg: DictConfig) -> None:
         future_time_window=cfg.data_cfg.future_time_window,
         time_step=cfg.data_cfg.time_step,
         start_time=cfg.data_cfg.start_time,
-        normalizer=normalizer,
-        argument=False
+        normalizer=None,
+        augment=False,
+        layout=cfg.layout
     )
 
     train_dataloader = DataLoader(
@@ -670,7 +713,10 @@ def main(cfg: DictConfig) -> None:
         ]
     )
     
-    model = MoEPOTNet(OmegaConf.to_container(cfg))
+    model = MoEPOTNet(
+        OmegaConf.to_container(cfg.model_cfg),
+        cfg.router_loss_weight
+    )
     
     total_params = count_model_parameters(model, active=False)
     print(f"Total Model parameters: {total_params:,d}")

@@ -1,6 +1,5 @@
 import torch
 from nucleus.baseline.moe_dpot import MoEPOTNet
-from nucleus.data.batching import CollatedBatch
 from nucleus.testing.parametrize import parametrize_available_devices
 
 @parametrize_available_devices("device")
@@ -27,7 +26,7 @@ def test_moe_dpot(device):
         "out_layer_dim": 256,
     }
 
-    model = MoEPOTNet(config).to(device)
+    model = MoEPOTNet(config, 0.1).to(device)
     
     input = torch.randn(4, 64, 64, 8, 4).to(device).requires_grad_(True)
     output, cls_pred, router_loss_total = model(input)
