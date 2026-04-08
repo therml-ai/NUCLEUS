@@ -5,6 +5,25 @@ import einops
 from rotary_embedding_torch import RotaryEmbedding, apply_rotary_emb
 import natten
 
+NATTEN_CONFIG_CUDA = {
+    # Settings determined using natten's profiler, this is a substantial performance
+    # improvement (~2x for forward and backward passes) over the default settings.
+    # 1. Based on input [batch=16, time=8, height=32, width=32, num_heads=4, head_dim=128]
+    # 2. assuming kernel size is (time, 3, 3)
+    # 3. Profiled on A30 GPU.
+    "backend": "cutlass-fna",
+    "q_tile_shape": (8, 4, 2),
+    "kv_tile_shape": (8, 4, 4),
+    "backward_q_tile_shape": (8, 2, 4),
+    "backward_kv_tile_shape": (8, 4, 2)
+}
+NATTEN_CONFIG_CPU = {}
+
+NATTEN_CONFIG = {
+    "cuda": NATTEN_CONFIG_CUDA,
+    "cpu": NATTEN_CONFIG_CPU
+}
+
 class NeighborhoodAttention(nn.Module):
     r"""
     This is similar to natten's NaighborhoodAttention2D,
@@ -55,16 +74,7 @@ class NeighborhoodAttention(nn.Module):
             kernel_size=(t, self.kernel_size, self.kernel_size),
             stride=1,
             dilation=1,
-            # Settings determined using natten's profiler, this is a substantial performance
-            # improvement (~2x for forward and backward passes) over the default settings.
-            # 1. Based on input [batch=16, time=8, height=32, width=32, num_heads=4, head_dim=128]
-            # 2. assuming kernel size is (time, 3, 3)
-            # 3. Profiled on A30 GPU.
-            backend="cutlass-fna",
-            q_tile_shape=(8, 4, 2),
-            kv_tile_shape=(8, 4, 4),
-            backward_q_tile_shape=(8, 2, 4),
-            backward_kv_tile_shape=(8, 4, 2)
+            **NATTEN_CONFIG[x.device.type]
         )
         
         output = output.view(b, t, h, w, self.num_heads * self.head_dim)
