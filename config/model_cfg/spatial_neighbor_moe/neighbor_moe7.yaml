@@ -1,5 +1,6 @@
-name: neighbor_moe
+name: nucleus1_moe
 train_module_name: moe_conditioned_forecast
+layout: "t c h w"
 params:
   patch_size: 4
   embed_dim: 512
