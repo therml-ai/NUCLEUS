@@ -26,22 +26,24 @@ class Nucleus1TransformerBlock(nn.Module):
         )
         
         self.mlp = GeluMLP(embed_dim)
-        
-    def _attention(self, x: torch.Tensor) -> torch.Tensor:
-        with record_function("attention"):
-            x = self.attention(self.pre_norm(x)) + x
-        return x
-    
-    def _mlp(self, x: torch.Tensor) -> torch.Tensor:
-        with record_function("mlp"):
-            x = self.mlp(self.post_norm(x)) + x
-        return x    
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self._attention(x)
-        x = self._mlp(x)
+        with record_function("transformer_block"):
+            # Attention with a skip connection
+            inp = x.clone()
+            with record_function("space_time_attention"):
+                x = self.attention(x)
+            with record_function("pre_norm"):          
+                x = self.pre_norm(x) + inp
+
+            # MLP with a skip connection
+            intermediate = x.clone()
+            with record_function("mlp"):
+                x = self.mlp(x)
+            with record_function("post_norm"):
+                x = self.post_norm(x) + intermediate
         return x
-    
+
 class Nucleus1TransformerMoEBlock(Nucleus1TransformerBlock):
     def __init__(
         self,
@@ -61,18 +63,25 @@ class Nucleus1TransformerMoEBlock(Nucleus1TransformerBlock):
             load_balance_loss_weight=load_balance_loss_weight,
         )
         
-    def _mlp(self, x: torch.Tensor) -> torch.Tensor:
-        with record_function("mlp"):
-            # NOTE: this kind of has a bug: forgot normalization and skip connection.
-            # Doesn't seem to have affected the models that much.
-            moe_output: TopkMoEOutput = self.mlp(x)
-            x = moe_output.out
-        return x, moe_output
-        
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self._attention(x)
-        x, moe_output = self._mlp(x)
+        with record_function("transformer_moe_block"):
+            # Attention with a skip connection
+            inp = x.clone()
+            with record_function("space_time_attention"):
+                x = self.attention(x)
+            with record_function("pre_norm"):          
+                x = self.pre_norm(x) + inp
+
+            # MLP with a skip connection
+            intermediate = x.clone()
+            with record_function("mlp"):
+                moe_output: TopkMoEOutput = self.mlp(x)
+                x = moe_output.out
+            with record_function("post_norm"):
+                x = self.post_norm(x) + intermediate
+
         return x, moe_output
+
 
 class Nucleus1TransformerNeighborBlock(Nucleus1TransformerBlock):
     def __init__(
