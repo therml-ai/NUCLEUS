@@ -35,9 +35,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-# NOTE:
-# 1.
-
 from transformers import (
     Swinv2PreTrainedModel,
     PretrainedConfig,
@@ -59,8 +56,11 @@ from typing import Optional, Union, Tuple, List
 import math
 import collections
 
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 import hydra
+
+from nucleus.data.collated_batch import CollatedBatch
+from nucleus.layers.mlp import FiLMMLP
 
 @dataclass
 class ScOTOutput(ModelOutput):
@@ -352,6 +352,9 @@ class ScOTEmbeddings(nn.Module):
 
         self.norm = layer_norm(config.embed_dim)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
+        
+        # NOTE: Added to pass in fluid parameters
+        self.film_embed = FiLMMLP(config.num_fluid_params, config.embed_dim)
 
     def forward(
         self,
@@ -1330,6 +1333,7 @@ class ScOT(Swinv2PreTrainedModel):
         self,
         pixel_values: Optional[torch.FloatTensor] = None,
         time: Optional[torch.FloatTensor] = None,
+        fluid_params: Optional[torch.FloatTensor] = None,
         bool_masked_pos: Optional[torch.BoolTensor] = None,
         head_mask: Optional[torch.FloatTensor] = None,
         pixel_mask: Optional[torch.BoolTensor] = None,
@@ -1519,11 +1523,26 @@ class ScOT(Swinv2PreTrainedModel):
             ),
         )
         
+class ScotModule(L.LightningModule):
+    def __init__(self, config: ScOTConfig):
+        super().__init__()
+        self.model = ScOT(config)
+        
+    def training_step(self, batch: CollatedBatch) -> torch.Tensor:
+        inp = batch.input
+        tgt = batch.target
+        out: ScOTOutput = self.model(inp, labels=tgt)
+        loss = out.loss
+        self.log("train_loss", loss)
+        return loss
+        
 @hydra.main(version_base=None, config_path="../../../config", config_name="poseidon")
 def main(cfg: DictConfig) -> None:
     print(cfg)
     
-    model = ScOT(cfg.model_cfg)
+    model_config_dict = OmegaConf.to_container(cfg.model_cfg, resolve=True)
+    scot_config = ScOTConfig(**model_config_dict)
+    model = ScOT(scot_config)
     input = torch.randn(1, 3, 224, 224)
     output = model(input)
     print(output)
