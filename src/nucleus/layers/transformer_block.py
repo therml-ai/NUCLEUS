@@ -13,6 +13,7 @@ class TransformerBlock(nn.Module):
         embed_dim: int,
         num_heads: int,
         drop_path_prob: float,
+        mlp_ratio: float = 4.0,
     ):
         super().__init__()
         
@@ -20,7 +21,7 @@ class TransformerBlock(nn.Module):
         self.mlp_norm = nn.RMSNorm(embed_dim)
         self.drop_path = DropPath(drop_path_prob)
         self.attention = NeighborhoodAttention(embed_dim=embed_dim, num_heads=num_heads)
-        self.mlp = GeluMLP(embed_dim)
+        self.mlp = GeluMLP(embed_dim, exp_factor=mlp_ratio)
     
     def _attention(self, x: torch.Tensor, freqs: torch.Tensor) -> torch.Tensor:
         with record_function("attention"):
@@ -46,8 +47,9 @@ class TransformerMoEBlock(TransformerBlock):
         topk: int,
         drop_path_prob: float,
         num_fluid_params: int,
+        mlp_ratio: float = 4.0,
     ):
-        super().__init__(embed_dim, num_heads, drop_path_prob)
+        super().__init__(embed_dim, num_heads, drop_path_prob, mlp_ratio=mlp_ratio)
 
         self.drop_path = DropPath(drop_path_prob)
 
@@ -65,7 +67,7 @@ class TransformerMoEBlock(TransformerBlock):
         self.mlp = TopkMoE(
             num_experts=num_experts,
             hidden_dim=embed_dim,
-            intermediate_dim=embed_dim * 4,
+            intermediate_dim=int(embed_dim * mlp_ratio),
             topk=topk,
             router=self.router
         )

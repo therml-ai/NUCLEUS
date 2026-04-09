@@ -24,6 +24,7 @@ class SpaceTimeBlock(nn.Module):
         num_heads: int = 12,
         attn_scale: bool = True,
         feat_scale: bool = True,
+        mlp_ratio: float = 4.0,
     ):
         super().__init__()
 
@@ -38,6 +39,7 @@ class SpaceTimeBlock(nn.Module):
             num_heads=num_heads,
             attn_scale=attn_scale,
             feat_scale=feat_scale,
+            mlp_ratio=mlp_ratio,
         )
 
     def forward(self, x) -> torch.Tensor:
@@ -87,6 +89,7 @@ class BubbleformerViT(nn.Module):
         processor_blocks: int = 12,
         attn_scale: bool = True,
         feat_scale: bool = True,
+        mlp_ratio: float = 4.0,
     ):
         super().__init__()
         # Hierarchical Patch Embedding
@@ -103,6 +106,7 @@ class BubbleformerViT(nn.Module):
                     num_heads=num_heads,
                     attn_scale=attn_scale,
                     feat_scale=feat_scale,
+                    mlp_ratio=mlp_ratio,
                 )
                 for i in range(processor_blocks)
             ]
@@ -172,6 +176,7 @@ class BubbleformerFilmViT(nn.Module):
         attn_scale: bool = True,
         feat_scale: bool = True,
         num_fluid_params: int = 8,
+        mlp_ratio: float = 4.0,
     ):
         super().__init__()
         self.embed = HMLPEmbed(
@@ -188,6 +193,7 @@ class BubbleformerFilmViT(nn.Module):
                 num_heads=num_heads,
                 attn_scale=attn_scale,
                 feat_scale=feat_scale,
+                mlp_ratio=mlp_ratio,
             )
             for i in range(processor_blocks)
         ])

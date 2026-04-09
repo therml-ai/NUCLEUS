@@ -34,6 +34,7 @@ class Nucleus1MoEBase(nn.Module):
         num_experts: int,
         topk: int,
         load_balance_loss_weight: float,
+        mlp_ratio: float = 4.0,
     ):
         super().__init__()
         self.embed = HMLPEmbed(
@@ -51,6 +52,7 @@ class Nucleus1MoEBase(nn.Module):
                 num_experts=num_experts,
                 topk=topk,
                 load_balance_loss_weight=load_balance_loss_weight,
+                mlp_ratio=mlp_ratio,
             )
             for _ in range(processor_blocks)
         ])
@@ -143,6 +145,7 @@ class Nucleus1ViTMoE(Nucleus1MoEBase):
         num_experts: int,
         topk: int,
         load_balance_loss_weight: float,
+        mlp_ratio: float = 4.0,
     ):
         super().__init__(
             input_fields=input_fields,
@@ -155,6 +158,7 @@ class Nucleus1ViTMoE(Nucleus1MoEBase):
             num_experts=num_experts,
             topk=topk,
             load_balance_loss_weight=load_balance_loss_weight,
+            mlp_ratio=mlp_ratio,
         )
 
 @register_model("nucleus1_axial_moe")
@@ -171,6 +175,7 @@ class Nucleus1AxialMoE(Nucleus1MoEBase):
         num_experts: int,
         topk: int,
         load_balance_loss_weight: float,
+        mlp_ratio: float = 4.0,
     ):
         super().__init__(
             input_fields=input_fields,
@@ -183,6 +188,7 @@ class Nucleus1AxialMoE(Nucleus1MoEBase):
             num_experts=num_experts,
             topk=topk,
             load_balance_loss_weight=load_balance_loss_weight,
+            mlp_ratio=mlp_ratio,
         )
         self.blocks = nn.ModuleList([
             Nucleus1TransformerAxialMoEBlock(
@@ -191,6 +197,7 @@ class Nucleus1AxialMoE(Nucleus1MoEBase):
                 num_experts=num_experts,
                 topk=topk,
                 load_balance_loss_weight=load_balance_loss_weight,
+                mlp_ratio=mlp_ratio,
             )
             for _ in range(processor_blocks)
         ])
@@ -209,6 +216,7 @@ class Nucleus1NeighborMoE(Nucleus1MoEBase):
         num_experts: int,
         topk: int,
         load_balance_loss_weight: float,
+        mlp_ratio: float = 4.0,
     ):
         super().__init__(
             input_fields=input_fields,
@@ -221,6 +229,7 @@ class Nucleus1NeighborMoE(Nucleus1MoEBase):
             num_experts=num_experts,
             topk=topk,
             load_balance_loss_weight=load_balance_loss_weight,
+            mlp_ratio=mlp_ratio,
         )
         self.blocks = nn.ModuleList([
             Nucleus1TransformerNeighborMoEBlock(
@@ -229,6 +238,7 @@ class Nucleus1NeighborMoE(Nucleus1MoEBase):
                 num_experts=num_experts,
                 topk=topk,
                 load_balance_loss_weight=load_balance_loss_weight,
+                mlp_ratio=mlp_ratio,
             )
             for _ in range(processor_blocks)
         ])

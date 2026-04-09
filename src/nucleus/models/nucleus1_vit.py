@@ -30,6 +30,7 @@ class Nucleus1ViTBase(nn.Module):
         num_heads: int,
         processor_blocks: int,
         num_fluid_params: int,
+        mlp_ratio: float = 4.0,
     ):
         super().__init__()
         self.embed = HMLPEmbed(
@@ -50,6 +51,7 @@ class Nucleus1ViTBase(nn.Module):
             Nucleus1TransformerBlock(
                 embed_dim=embed_dim,
                 num_heads=num_heads,
+                mlp_ratio=mlp_ratio,
             )
             for _ in range(processor_blocks)
         ])
@@ -129,6 +131,7 @@ class Nucleus1ViT(Nucleus1ViTBase):
         num_heads: int,
         processor_blocks: int,
         num_fluid_params: int,
+        mlp_ratio: float = 4.0,
     ):
         super().__init__(
             input_fields=input_fields,
@@ -138,6 +141,7 @@ class Nucleus1ViT(Nucleus1ViTBase):
             num_heads=num_heads,
             processor_blocks=processor_blocks,
             num_fluid_params=num_fluid_params,
+            mlp_ratio=mlp_ratio,
         )
 
 @register_model("nucleus1_axial_vit")
@@ -151,6 +155,7 @@ class Nucleus1AxialViT(Nucleus1ViTBase):
         num_heads: int,
         processor_blocks: int,
         num_fluid_params: int,
+        mlp_ratio: float = 4.0,
     ):
         super().__init__(
             input_fields=input_fields,
@@ -160,11 +165,13 @@ class Nucleus1AxialViT(Nucleus1ViTBase):
             num_heads=num_heads,
             processor_blocks=processor_blocks,
             num_fluid_params=num_fluid_params,
+            mlp_ratio=mlp_ratio,
         )
         self.blocks = nn.ModuleList([
             Nucleus1TransformerAxialBlock(
                 embed_dim=embed_dim,
                 num_heads=num_heads,
+                mlp_ratio=mlp_ratio,
             )
             for _ in range(processor_blocks)
         ])
@@ -180,6 +187,7 @@ class Nucleus1NeighborViT(Nucleus1ViTBase):
         num_heads: int,
         processor_blocks: int,
         num_fluid_params: int,
+        mlp_ratio: float = 4.0,
     ):
         super().__init__(
             input_fields=input_fields,
@@ -189,11 +197,13 @@ class Nucleus1NeighborViT(Nucleus1ViTBase):
             num_heads=num_heads,
             processor_blocks=processor_blocks,
             num_fluid_params=num_fluid_params,
+            mlp_ratio=mlp_ratio,
         )
         self.blocks = nn.ModuleList([
             Nucleus1TransformerNeighborBlock(
                 embed_dim=embed_dim,
                 num_heads=num_heads,
+                mlp_ratio=mlp_ratio,
             )
             for _ in range(processor_blocks)
         ])

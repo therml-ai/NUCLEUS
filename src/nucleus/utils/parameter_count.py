@@ -1,6 +1,9 @@
 import torch
 import torch.nn as nn
 from nucleus.layers.moe.topk_moe import TopkMoE
+from nucleus.layers.moe.nucleus1_topk_moe import TopkMoE as Nucleus1TopkMoE
+
+_MOE_CLASSES = (TopkMoE, Nucleus1TopkMoE)
 
 def count_model_parameters(module: nn.Module, active: bool = False) -> int:
     r"""
@@ -12,7 +15,7 @@ def count_model_parameters(module: nn.Module, active: bool = False) -> int:
     Returns:
         int: the number of parameters in the model.
     """
-    if isinstance(module, TopkMoE) and active:
+    if isinstance(module, _MOE_CLASSES) and active:
         expert_active_params = module.topk * (module.w1[0].numel() + module.w2[0].numel())
         router_params = sum(p.numel() for p in module.router.parameters())
         return expert_active_params + router_params

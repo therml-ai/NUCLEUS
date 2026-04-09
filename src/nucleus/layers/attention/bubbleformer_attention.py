@@ -136,6 +136,7 @@ class BubbleformerAxialAttentionBlock(nn.Module):
         bias_type="rel",
         attn_scale=True,
         feat_scale=True,
+        mlp_ratio: float = 4.0,
     ):
         super().__init__()
         self.embed_dim = embed_dim
@@ -185,7 +186,7 @@ class BubbleformerAxialAttentionBlock(nn.Module):
             self.low_freq_scalar = nn.Parameter(torch.zeros(embed_dim), requires_grad=True)
             self.high_freq_scalar = nn.Parameter(torch.zeros(embed_dim), requires_grad=True)
 
-        self.mlp = GeluMLP(embed_dim)
+        self.mlp = GeluMLP(embed_dim, exp_factor=mlp_ratio)
         self.mlp_norm = nn.InstanceNorm2d(embed_dim, affine=True)
 
     def forward(self, x):

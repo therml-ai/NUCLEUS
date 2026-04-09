@@ -28,6 +28,7 @@ class MoEBase(nn.Module):
         num_fluid_params: int,
         num_experts: int,
         topk: int,
+        mlp_ratio: float = 4.0,
     ):
         super().__init__()
         self.embed = LinearEmbed(
@@ -56,6 +57,7 @@ class MoEBase(nn.Module):
                 topk=topk,
                 drop_path_prob=self.drop_path_probs[idx].item(),
                 num_fluid_params=num_fluid_params,
+                mlp_ratio=mlp_ratio,
             )
             for idx in range(processor_blocks)
         ])
@@ -106,5 +108,5 @@ class MoEBase(nn.Module):
 
 @register_model("neighbor_moe")
 class NeighborMoE(MoEBase):
-    def __init__(*args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

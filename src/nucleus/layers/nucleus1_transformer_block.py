@@ -13,7 +13,8 @@ class Nucleus1TransformerBlock(nn.Module):
     def __init__(
         self,
         embed_dim: int,
-        num_heads: int
+        num_heads: int,
+        mlp_ratio: float = 4.0,
     ):
         super().__init__()
         
@@ -25,7 +26,7 @@ class Nucleus1TransformerBlock(nn.Module):
             num_heads=num_heads,
         )
         
-        self.mlp = GeluMLP(embed_dim)
+        self.mlp = GeluMLP(embed_dim, exp_factor=mlp_ratio)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         with record_function("transformer_block"):
@@ -52,13 +53,14 @@ class Nucleus1TransformerMoEBlock(Nucleus1TransformerBlock):
         num_experts: int,
         topk: int,
         load_balance_loss_weight: float,
+        mlp_ratio: float = 4.0,
     ):
-        super().__init__(embed_dim, num_heads)
+        super().__init__(embed_dim, num_heads, mlp_ratio=mlp_ratio)
     
         self.mlp = TopkMoE(
             num_experts=num_experts,
             hidden_dim=embed_dim,
-            intermediate_dim=embed_dim * 4,
+            intermediate_dim=int(embed_dim * mlp_ratio),
             topk=topk,
             load_balance_loss_weight=load_balance_loss_weight,
         )
@@ -87,14 +89,15 @@ class Nucleus1TransformerNeighborBlock(Nucleus1TransformerBlock):
     def __init__(
         self,
         embed_dim: int,
-        num_heads: int
+        num_heads: int,
+        mlp_ratio: float = 4.0,
     ):
-        super().__init__(embed_dim, num_heads)
+        super().__init__(embed_dim, num_heads, mlp_ratio=mlp_ratio)
         self.attention = Nucleus1SpaceTimeNeighborAttention(
             embed_dim=embed_dim,
             num_heads=num_heads,
         )
-        self.mlp = GeluMLP(embed_dim)
+        self.mlp = GeluMLP(embed_dim, exp_factor=mlp_ratio)
     
 class Nucleus1TransformerNeighborMoEBlock(Nucleus1TransformerMoEBlock):
     def __init__(
@@ -104,8 +107,9 @@ class Nucleus1TransformerNeighborMoEBlock(Nucleus1TransformerMoEBlock):
         num_experts: int,
         topk: int,
         load_balance_loss_weight: float,
+        mlp_ratio: float = 4.0,
     ):
-        super().__init__(embed_dim, num_heads, num_experts, topk, load_balance_loss_weight)
+        super().__init__(embed_dim, num_heads, num_experts, topk, load_balance_loss_weight, mlp_ratio=mlp_ratio)
         self.attention = Nucleus1SpaceTimeNeighborAttention(
             embed_dim=embed_dim,
             num_heads=num_heads,
@@ -115,9 +119,10 @@ class Nucleus1TransformerAxialBlock(Nucleus1TransformerBlock):
     def __init__(
         self,
         embed_dim: int,
-        num_heads: int
+        num_heads: int,
+        mlp_ratio: float = 4.0,
     ):
-        super().__init__(embed_dim, num_heads)
+        super().__init__(embed_dim, num_heads, mlp_ratio=mlp_ratio)
         self.attention = Nucleus1SpaceTimeAxialAttention(
             embed_dim=embed_dim,
             num_heads=num_heads,
@@ -131,8 +136,9 @@ class Nucleus1TransformerAxialMoEBlock(Nucleus1TransformerMoEBlock):
         num_experts: int,
         topk: int,
         load_balance_loss_weight: float,
+        mlp_ratio: float = 4.0,
     ):
-        super().__init__(embed_dim, num_heads, num_experts, topk, load_balance_loss_weight)
+        super().__init__(embed_dim, num_heads, num_experts, topk, load_balance_loss_weight, mlp_ratio=mlp_ratio)
         self.attention = Nucleus1SpaceTimeAxialAttention(
             embed_dim=embed_dim,
             num_heads=num_heads,

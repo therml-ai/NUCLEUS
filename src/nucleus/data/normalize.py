@@ -223,7 +223,7 @@ def get_normalizer(normalizer_cfg: dict) -> Normalizer:
     if normalizer_cfg["name"] == "no":
         return NoNormalizer()
     else:
-        raise ValueError(f"Unknown normalizer: {normalizer_cfg["name"]}")
+        raise ValueError(f"Unknown normalizer: {normalizer_cfg['name']}")
 
 class RunningVariance:
     def __init__(self, bins: int, range: tuple[float, float]):
