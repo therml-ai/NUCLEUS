@@ -1,6 +1,7 @@
 """
 This majority of this file is taken from Poseidon, which uses code from the Huggingface Transformers library.
-The model implementation is untouched. This is just a trainer/wrapper around it.
+The model implementation is only modified to add a FiLMMLP layer to the model, this is used to encode the fluid parameters.
+This is done in the ScOTEmbeddings class.
 
 Poseidon is licensed under the MIT License.
 https://github.com/camlab-ethz/poseidon/tree/main
@@ -52,15 +53,23 @@ from transformers.utils import ModelOutput
 from dataclasses import dataclass
 import torch
 from torch import nn
+from torch.utils.data import DataLoader
 from typing import Optional, Union, Tuple, List
 import math
 import collections
 
+import os
+from datetime import date
 from omegaconf import DictConfig, OmegaConf
 import hydra
+import lightning as L
+from lightning.pytorch.loggers.wandb import WandbLogger
+from lightning.pytorch.callbacks import ModelSummary, ModelCheckpoint
 
-from nucleus.data.collated_batch import CollatedBatch
+from nucleus.data.in_mem_forecast_dataset import InMemForecastDataset
+from nucleus.data.batching import CollatedBatch, collate
 from nucleus.layers.mlp import FiLMMLP
+from nucleus.utils.parameter_count import count_model_parameters
 
 @dataclass
 class ScOTOutput(ModelOutput):
@@ -87,6 +96,7 @@ class ScOTConfig(PretrainedConfig):
         patch_size=4,
         num_channels=3,
         num_out_channels=1,
+        num_fluid_params=16, # NOTE: MODIFIED
         embed_dim=96,
         depths=[2, 2, 6, 2],
         num_heads=[3, 6, 12, 24],
@@ -117,6 +127,7 @@ class ScOTConfig(PretrainedConfig):
         self.patch_size = patch_size
         self.num_channels = num_channels
         self.embed_dim = embed_dim
+        self.num_fluid_params = num_fluid_params
         self.depths = depths
         self.num_layers = len(depths)
         self.num_heads = num_heads
@@ -353,7 +364,6 @@ class ScOTEmbeddings(nn.Module):
         self.norm = layer_norm(config.embed_dim)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         
-        # NOTE: Added to pass in fluid parameters
         self.film_embed = FiLMMLP(config.num_fluid_params, config.embed_dim)
 
     def forward(
@@ -361,6 +371,7 @@ class ScOTEmbeddings(nn.Module):
         pixel_values: Optional[torch.FloatTensor],
         bool_masked_pos: Optional[torch.BoolTensor] = None,
         time: Optional[torch.FloatTensor] = None,
+        fluid_params: Optional[torch.FloatTensor] = None,
     ) -> Tuple[torch.Tensor]:
         embeddings, output_dimensions = self.patch_embeddings(pixel_values)
         embeddings = self.norm(embeddings, time)
@@ -376,9 +387,11 @@ class ScOTEmbeddings(nn.Module):
             embeddings = embeddings + self.position_embeddings
 
         embeddings = self.dropout(embeddings)
+    
+        if fluid_params is not None:
+            embeddings = self.film_embed(embeddings, fluid_params)
 
         return embeddings, output_dimensions
-
 
 class ScOTLayer(nn.Module):
     def __init__(
@@ -1380,8 +1393,9 @@ class ScOT(Swinv2PreTrainedModel):
             else:
                 pixel_values = self._downsample(pixel_values, self.config.image_size)
 
+        # NOTE: fluid parames added in here
         embedding_output, input_dimensions = self.embeddings(
-            pixel_values, bool_masked_pos=bool_masked_pos, time=time
+            pixel_values, bool_masked_pos=bool_masked_pos, time=time, fluid_params=fluid_params
         )
 
         encoder_outputs = self.encoder(
@@ -1523,30 +1537,132 @@ class ScOT(Swinv2PreTrainedModel):
             ),
         )
         
-class ScotModule(L.LightningModule):
+class ScOTModule(L.LightningModule):
     def __init__(self, config: ScOTConfig):
         super().__init__()
         self.model = ScOT(config)
         
+    def forward(self, input, fluid_params, labels):
+        return self.model(input, fluid_params=fluid_params, labels=labels)
+        
     def training_step(self, batch: CollatedBatch) -> torch.Tensor:
-        inp = batch.input
-        tgt = batch.target
-        out: ScOTOutput = self.model(inp, labels=tgt)
+        # [B, 1, C, H, W] -> [B, C, H, W]
+        inp = batch.input.squeeze(1)
+        tgt = batch.target.squeeze(1)
+        
+        fluid_params = batch.fluid_params_tensor
+        out: ScOTOutput = self(inp, fluid_params, tgt)
         loss = out.loss
         self.log("train_loss", loss)
         return loss
         
 @hydra.main(version_base=None, config_path="../../../config", config_name="poseidon")
 def main(cfg: DictConfig) -> None:
-    print(cfg)
+    
+    train_dataset = InMemForecastDataset(
+        filenames=cfg.data_cfg.train_paths,
+        input_fields=cfg.data_cfg.input_fields,
+        output_fields=cfg.data_cfg.output_fields,
+        history_time_window=1,
+        future_time_window=1,
+        time_step=cfg.data_cfg.time_step,
+        start_time=cfg.data_cfg.start_time,
+        normalizer=None,
+        augment=True,
+        layout=cfg.layout
+    )
+    val_dataset = InMemForecastDataset(
+        filenames=cfg.data_cfg.val_paths,
+        input_fields=cfg.data_cfg.input_fields,
+        output_fields=cfg.data_cfg.output_fields,
+        history_time_window=1,
+        future_time_window=1,
+        time_step=cfg.data_cfg.time_step,
+        start_time=cfg.data_cfg.start_time,
+        normalizer=None,
+        augment=False,
+        layout=cfg.layout
+    )
+
+    train_dataloader = DataLoader(
+        train_dataset,
+        batch_size=cfg.batch_size,
+        shuffle=True,
+        num_workers=4,
+        pin_memory=True,
+        prefetch_factor=2,
+        persistent_workers=True,
+        collate_fn=collate,
+    )
+    val_dataloader = DataLoader(
+        val_dataset,
+        batch_size=4 * cfg.batch_size,
+        shuffle=False,
+        num_workers=4,
+        pin_memory=True,
+        prefetch_factor=2,
+        persistent_workers=True,
+        collate_fn=collate,
+    )
+    
+    # Setup Wandb Logger.
+    log_id_parts = [
+        "moe_dpot",
+        cfg.data_cfg.dataset.lower(),
+        date.today().strftime("%Y-%m-%d"),
+    ]
+    if os.getenv("SLURM_JOB_ID") is not None:
+        log_id_parts.append(os.getenv("SLURM_JOB_ID"))
+    
+    log_id = "_".join(log_id_parts)
+    cfg.log_dir = os.path.join(cfg.log_dir, log_id)
+    os.makedirs(cfg.log_dir, exist_ok=True)
+    
+    logger = WandbLogger(
+        entity="hpcforge",
+        project="bubbleformer",
+        name=log_id,
+        dir=cfg.log_dir,
+        config=OmegaConf.to_container(cfg),
+    )
+    
+    trainer = L.Trainer(
+        accelerator="gpu" if torch.cuda.is_available() else "cpu",
+        devices=cfg.devices,
+        num_nodes=cfg.nodes,
+        strategy="auto",
+        max_epochs=cfg.max_epochs,
+        max_steps=cfg.max_steps,
+        val_check_interval=cfg.val_check_interval,
+        log_every_n_steps=100,
+        accumulate_grad_batches=cfg.accumulate_grad_batches,
+        logger=logger,
+        default_root_dir=cfg.log_dir,
+        enable_model_summary=True,
+        num_sanity_val_steps=0,
+        callbacks=[
+            ModelSummary(max_depth=-1), 
+            ModelCheckpoint(
+                dirpath=cfg.log_dir + "/checkpoints",
+                monitor="val/loss",
+                mode="min",
+                save_top_k=2,
+                save_last=True,
+                every_n_train_steps=20000,
+                save_on_exception=True
+            ),
+        ]
+    )
     
     model_config_dict = OmegaConf.to_container(cfg.model_cfg, resolve=True)
     scot_config = ScOTConfig(**model_config_dict)
-    model = ScOT(scot_config)
-    input = torch.randn(1, 3, 224, 224)
-    output = model(input)
-    print(output)
-        
+    module = ScOTModule(scot_config)
+    
+    total_params = count_model_parameters(module.model, active=False)
+    print(f"Total Model parameters: {total_params:,d}")
+    
+    trainer.fit(module, train_dataloader, val_dataloader)
+            
 if __name__ == "__main__":
     # pylint: disable=no-value-for-parameter
     main()

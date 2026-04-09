@@ -15,6 +15,9 @@ future_time_window: 8
 time_step: 1
 start_time: 100
 
+router_loss_weight: 0.01
+layout: "h w t c"
+
 checkpoint_path:
 commit_sha:
 
@@ -37,10 +40,6 @@ model_cfg:
   mixing_type: "afno"
   depth: 8
   out_layer_dim: 256
-
-router_loss_weight: 0.01
-lr: 1e-3
-layout: "h w t c"
 
 defaults:
   - _self_

@@ -24,7 +24,6 @@ class GeluMLP(nn.Module):
         """
         return self.fc2(self.act(self.fc1(x)))
 
-@torch.compile(fullgraph=True)
 class FiLMMLP(nn.Module):
     """
     MLP with FiLM (Feature-wise Linear Modulation) layers
@@ -34,6 +33,7 @@ class FiLMMLP(nn.Module):
     """
     def __init__(self, param_dim, embed_dim):
         super().__init__()
+        self.param_dim = param_dim
         self.film_net = nn.Sequential(
             nn.LayerNorm(param_dim),
             nn.Linear(param_dim, embed_dim * 2),
@@ -42,19 +42,22 @@ class FiLMMLP(nn.Module):
     def forward(self, x: torch.Tensor, cond) -> torch.Tensor:
         """
         Args:
-            x (torch.Tensor): Input tensor  (B, T, H, W, C)
+            x (torch.Tensor): Input tensor  (B, ..., C)
             cond (torch.Tensor): Conditioning tensor (B, param_dim)
         Returns:
-            torch.Tensor: Output tensor
+            torch.Tensor: Output tensor (B, ..., C)
         """
         assert x.shape[0] == cond.shape[0], "Batch size of input and condition must match"
+        assert cond.shape[1] == self.param_dim, f"Condition dimension must match {self.param_dim}, got {cond.shape[1]}"
         batch_size, num_channels = x.shape[0], x.shape[-1]
         
         gamma_beta = self.film_net(cond)  # (B, 2 * C)
         gamma, beta = gamma_beta.chunk(2, dim=1)
+        
+        ones = [1 for _ in range(x.dim() - 2)]
+        # Every point gets the same embedding.
+        gamma = gamma.view(batch_size, *ones, num_channels)
+        beta = beta.view(batch_size, *ones, num_channels)
 
-        # Every (T, H, W) point gets the same embedding.
-        gamma = gamma.view(batch_size, 1, 1, 1, num_channels)
-        beta = beta.view(batch_size, 1, 1, 1, num_channels)
-
+        # TODO: ideally, this should be (1 + gamma) * x + beta
         return gamma * x + beta

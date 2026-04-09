@@ -781,7 +781,7 @@ def main(cfg: DictConfig) -> None:
     model = MoEPOTNet(
         OmegaConf.to_container(cfg.model_cfg),
         cfg.router_loss_weight,
-        cfg.lr
+        cfg.optim_cfg.lr
     )
     
     total_params = count_model_parameters(model, active=False)

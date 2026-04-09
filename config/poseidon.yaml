@@ -15,14 +15,17 @@ future_time_window: 1
 time_step: 1
 start_time: 100
 
+layout: "t c h w"
+
 checkpoint_path:
 commit_sha:
 
 model_cfg:
-  image_size: 224
+  num_fluid_params: 16
+  image_size: 64
   patch_size: 4
-  num_channels: 3
-  num_out_channels: 1
+  num_channels: 4 # sdf, temp, velx, vely
+  num_out_channels: 4 # sdf, temp, velx, vely
   embed_dim: 96
   depths: [2, 2, 6, 2]
   num_heads: [3, 6, 12, 24]
@@ -38,14 +41,10 @@ model_cfg:
   initializer_range: 0.02
   layer_norm_eps: 1e-5
   p: 1  # for loss: 1 for l1, 2 for l2
-  channel_slice_list_normalized_loss: None  # if None will fall back to absolute loss otherwise normalized loss with split channels
+  channel_slice_list_normalized_loss:  # if None will fall back to absolute loss otherwise normalized loss with split channels
   residual_model: "convnext"  # "convnext" or "resnet"
   use_conditioning: False
   learn_residual: True  # learn the residual for time-dependent problems
-
-router_loss_weight: 0.01
-lr: 1e-3
-layout: "t h w c"
 
 defaults:
   - _self_
