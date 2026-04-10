@@ -163,9 +163,9 @@ def make_plots(results, out_dir: Path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--out-dir", type=str, default="/data/homezvol3/srachaba/temp")
+    parser.add_argument("--out-dir", type=str, default=None)
     args = parser.parse_args()
-    out_dir = Path(args.out_dir) / "inference_scaling"
+    out_dir = (Path(args.out_dir) if args.out_dir else Path.home() / "temp") / "inference_scaling"
 
     print(f"Device: {DEVICE}")
     results = run_sweep()

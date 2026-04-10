@@ -180,9 +180,9 @@ def sanity_check():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--out-dir", type=str, default="/data/homezvol3/srachaba/temp")
+    parser.add_argument("--out-dir", type=str, default=None)
     args = parser.parse_args()
-    out_dir = Path(args.out_dir) / "block_flop_profile"
+    out_dir = (Path(args.out_dir) if args.out_dir else Path.home() / "temp") / "block_flop_profile"
 
     print(f"Device: {DEVICE}")
     sanity_check()

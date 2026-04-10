@@ -369,9 +369,9 @@ def print_row(row: dict) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--out-dir", type=str, default="/data/homezvol3/srachaba/temp")
+    parser.add_argument("--out-dir", type=str, default=None)
     args = parser.parse_args()
-    out_dir = Path(args.out_dir) / "problem_size_report"
+    out_dir = (Path(args.out_dir) if args.out_dir else Path.home() / "temp") / "problem_size_report"
 
     print("=== Problem size scaling benchmark ===")
     print(

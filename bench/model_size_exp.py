@@ -354,9 +354,9 @@ def run_exact_model_suite() -> list[dict]:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--out-dir", type=str, default="/data/homezvol3/srachaba/temp")
+    parser.add_argument("--out-dir", type=str, default=None)
     args = parser.parse_args()
-    out_dir = Path(args.out_dir) / "ablation_report"
+    out_dir = (Path(args.out_dir) if args.out_dir else Path.home() / "temp") / "ablation_report"
 
     rows = []
     rows.extend(run_matched_backbone_suite())
