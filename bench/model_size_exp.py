@@ -1,4 +1,6 @@
+import argparse
 import csv
+import statistics
 from pathlib import Path
 
 import torch
@@ -12,22 +14,16 @@ from nucleus.utils.parameter_count import count_model_parameters
 torch._dynamo.config.cache_size_limit = 64
 
 
-# ---------------------------------------------------------------------------
 # Shared benchmark setup
-# ---------------------------------------------------------------------------
 B, T, H, W, C = 10, 5, 64, 64, 4
 NUM_FLUID_PARAMS = 16
 BENCHMARK_REPEATS = 50
-WARMUP_REPEATS = 10
-OUT_DIR = Path(__file__).resolve().parent / "artifacts" / "ablation_report"
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Device: {device}\n")
 
 
-# ---------------------------------------------------------------------------
 # All benchmark configs live here
-# ---------------------------------------------------------------------------
 COMMON_MODEL_CONFIG = dict(
     input_fields=C,
     output_fields=C,
@@ -185,9 +181,7 @@ EXACT_MODEL_CONFIGS = [
 ]
 
 
-# ---------------------------------------------------------------------------
 # Shared inputs
-# ---------------------------------------------------------------------------
 tchw_batch = CollatedBatch(
     input=torch.randn(B, T, C, H, W, device=device),
     target=None,
@@ -200,34 +194,18 @@ tchw_batch = CollatedBatch(
 )
 
 
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
-def measure_inference_ms(model, batch, repeats=BENCHMARK_REPEATS, warmup=WARMUP_REPEATS):
+def measure_inference_ms(model, batch, repeats=BENCHMARK_REPEATS) -> tuple[float, float]:
     model.eval()
     with torch.no_grad():
-        for _ in range(warmup):
-            model(batch)
-        if device.type == "cuda":
-            torch.cuda.synchronize()
-        result = Timer(
-            stmt="model(batch)",
-            globals={"model": model, "batch": batch},
-        ).timeit(repeats)
-    return result.mean * 1e3
+        timer = Timer(stmt="model(batch)", globals={"model": model, "batch": batch})
+        times_ms = [timer.timeit(1).mean * 1e3 for _ in range(repeats)]
+    return statistics.mean(times_ms), statistics.stdev(times_ms)
 
 
-def measure_train_step_ms(model, batch, repeats=BENCHMARK_REPEATS, warmup=WARMUP_REPEATS):
+def measure_train_step_ms(model, batch, repeats=BENCHMARK_REPEATS) -> tuple[float, float]:
     model.train()
-    for _ in range(warmup):
-        out = model(batch)
-        loss = out[0].sum() if isinstance(out, tuple) else out.sum()
-        loss.backward()
-        model.zero_grad(set_to_none=True)
-    if device.type == "cuda":
-        torch.cuda.synchronize()
-
-    result = Timer(
+    timer = Timer(
         stmt="""
 out = model(batch)
 loss = out[0].sum() if isinstance(out, tuple) else out.sum()
@@ -235,8 +213,9 @@ loss.backward()
 model.zero_grad(set_to_none=True)
 """,
         globals={"model": model, "batch": batch},
-    ).timeit(repeats)
-    return result.mean * 1e3
+    )
+    times_ms = [timer.timeit(1).mean * 1e3 for _ in range(repeats)]
+    return statistics.mean(times_ms), statistics.stdev(times_ms)
 
 
 def measure_vram_mb(model, batch):
@@ -266,7 +245,9 @@ def benchmark_model(suite: str, size_name: str, model_name: str, label: str, cfg
         "active_m": active / 1e6,
         "total_m": total / 1e6,
         "inference_ms": float("nan"),
+        "inference_ms_std": float("nan"),
         "train_ms": float("nan"),
+        "train_ms_std": float("nan"),
         "vram_mb": float("nan"),
     }
 
@@ -275,11 +256,11 @@ def benchmark_model(suite: str, size_name: str, model_name: str, label: str, cfg
     print(f"  {'total':<10} {row['total_m']:>6.1f}M")
 
     if do_benchmark:
-        row["inference_ms"] = measure_inference_ms(model, tchw_batch)
-        row["train_ms"] = measure_train_step_ms(model, tchw_batch)
+        row["inference_ms"], row["inference_ms_std"] = measure_inference_ms(model, tchw_batch)
+        row["train_ms"], row["train_ms_std"] = measure_train_step_ms(model, tchw_batch)
         row["vram_mb"] = measure_vram_mb(model, tchw_batch)
-        print(f"  {'inference':<10} {row['inference_ms']:>6.1f} ms")
-        print(f"  {'train step':<10} {row['train_ms']:>6.1f} ms")
+        print(f"  {'inference':<10} {row['inference_ms']:>6.1f} ± {row['inference_ms_std']:>4.1f} ms")
+        print(f"  {'train step':<10} {row['train_ms']:>6.1f} ± {row['train_ms_std']:>4.1f} ms")
         print(f"  {'VRAM':<10} {row['vram_mb']:>6.0f} MB")
     else:
         print("  (timing skipped)")
@@ -291,9 +272,9 @@ def benchmark_model(suite: str, size_name: str, model_name: str, label: str, cfg
     return row
 
 
-def write_csv(rows: list[dict]) -> Path:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OUT_DIR / "ablation_benchmark.csv"
+def write_csv(rows: list[dict], out_dir: Path) -> Path:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "ablation_benchmark.csv"
     fieldnames = [
         "suite",
         "size",
@@ -302,7 +283,9 @@ def write_csv(rows: list[dict]) -> Path:
         "active_m",
         "total_m",
         "inference_ms",
+        "inference_ms_std",
         "train_ms",
+        "train_ms_std",
         "vram_mb",
     ]
     with out_path.open("w", newline="", encoding="ascii") as f:
@@ -370,11 +353,16 @@ def run_exact_model_suite() -> list[dict]:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--out-dir", type=str, default="/data/homezvol3/srachaba/temp")
+    args = parser.parse_args()
+    out_dir = Path(args.out_dir) / "ablation_report"
+
     rows = []
     rows.extend(run_matched_backbone_suite())
     rows.extend(run_exact_model_suite())
 
-    out_path = write_csv(rows)
+    out_path = write_csv(rows, out_dir)
     print(f"\nWrote benchmark CSV to {out_path}")
 
 

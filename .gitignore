@@ -32,8 +32,3 @@ CLAUDE.md
 #Codex stuff
 *.codex
 
-#Random testing
-test/artifacts
-test/generate_ablation_report.py
-test/inspect_ckpt.py
-

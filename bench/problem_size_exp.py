@@ -1,4 +1,6 @@
+import argparse
 import csv
+import statistics
 from pathlib import Path
 
 import torch
@@ -12,9 +14,7 @@ from nucleus.utils.parameter_count import count_model_parameters
 torch._dynamo.config.cache_size_limit = 64
 
 
-# ---------------------------------------------------------------------------
 # Experiment config
-# ---------------------------------------------------------------------------
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Device: {DEVICE}\n")
 
@@ -24,9 +24,6 @@ CHANNELS = 4
 NUM_FLUID_PARAMS = 16
 RESOLUTIONS = [512, 256, 128, 64]
 BENCHMARK_REPEATS = 20
-WARMUP_REPEATS = 5
-
-OUT_DIR = Path(__file__).resolve().parent / "artifacts" / "problem_size_report"
 
 # Shared backbone used by both experiments.
 COMMON_MODEL_CONFIG = dict(
@@ -114,9 +111,7 @@ EXPERIMENTS = [
 ]
 
 
-# ---------------------------------------------------------------------------
 # Batch + metrics helpers
-# ---------------------------------------------------------------------------
 def make_batch(resolution: int) -> CollatedBatch:
     return CollatedBatch(
         input=torch.randn(BATCH_SIZE, TIME_WINDOW, CHANNELS, resolution, resolution, device=DEVICE),
@@ -152,31 +147,17 @@ def scalar_loss(output):
     return output.sum()
 
 
-def measure_inference_ms(model, batch, repeats=BENCHMARK_REPEATS, warmup=WARMUP_REPEATS) -> float:
+def measure_inference_ms(model, batch, repeats=BENCHMARK_REPEATS) -> tuple[float, float]:
     model.eval()
     with torch.no_grad():
-        for _ in range(warmup):
-            model(batch)
-        if DEVICE.type == "cuda":
-            torch.cuda.synchronize()
-        result = Timer(
-            stmt="model(batch)",
-            globals={"model": model, "batch": batch},
-        ).timeit(repeats)
-    return result.mean * 1e3
+        timer = Timer(stmt="model(batch)", globals={"model": model, "batch": batch})
+        times_ms = [timer.timeit(1).mean * 1e3 for _ in range(repeats)]
+    return statistics.mean(times_ms), statistics.stdev(times_ms)
 
 
-def measure_train_step_ms(model, batch, repeats=BENCHMARK_REPEATS, warmup=WARMUP_REPEATS) -> float:
+def measure_train_step_ms(model, batch, repeats=BENCHMARK_REPEATS) -> tuple[float, float]:
     model.train()
-    for _ in range(warmup):
-        out = model(batch)
-        loss = scalar_loss(out)
-        loss.backward()
-        model.zero_grad(set_to_none=True)
-    if DEVICE.type == "cuda":
-        torch.cuda.synchronize()
-
-    result = Timer(
+    timer = Timer(
         stmt="""
 out = model(batch)
 loss = scalar_loss(out)
@@ -184,8 +165,9 @@ loss.backward()
 model.zero_grad(set_to_none=True)
 """,
         globals={"model": model, "batch": batch, "scalar_loss": scalar_loss},
-    ).timeit(repeats)
-    return result.mean * 1e3
+    )
+    times_ms = [timer.timeit(1).mean * 1e3 for _ in range(repeats)]
+    return statistics.mean(times_ms), statistics.stdev(times_ms)
 
 
 def measure_inference_vram_mb(model, batch) -> float:
@@ -266,7 +248,9 @@ def benchmark_resolution(experiment_name: str, model_spec: dict, resolution: int
         "active_m": float("nan"),
         "total_m": float("nan"),
         "inference_ms": float("nan"),
+        "inference_ms_std": float("nan"),
         "train_ms": float("nan"),
+        "train_ms_std": float("nan"),
         "inference_vram_mb": float("nan"),
         "train_vram_mb": float("nan"),
         "inference_samples_per_s": float("nan"),
@@ -289,8 +273,8 @@ def benchmark_resolution(experiment_name: str, model_spec: dict, resolution: int
         row["total_m"] = count_model_parameters(model, active=False) / 1e6
         row["active_m"] = count_model_parameters(model, active=True) / 1e6
 
-        row["inference_ms"] = measure_inference_ms(model, batch)
-        row["train_ms"] = measure_train_step_ms(model, batch)
+        row["inference_ms"], row["inference_ms_std"] = measure_inference_ms(model, batch)
+        row["train_ms"], row["train_ms_std"] = measure_train_step_ms(model, batch)
         row["inference_vram_mb"] = measure_inference_vram_mb(model, batch)
         row["train_vram_mb"] = measure_train_vram_mb(model, batch)
 
@@ -325,9 +309,9 @@ def benchmark_resolution(experiment_name: str, model_spec: dict, resolution: int
     return row
 
 
-def write_csv(rows: list[dict]) -> Path:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OUT_DIR / "problem_size_scaling.csv"
+def write_csv(rows: list[dict], out_dir: Path) -> Path:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "problem_size_scaling.csv"
     fieldnames = [
         "experiment",
         "model",
@@ -341,7 +325,9 @@ def write_csv(rows: list[dict]) -> Path:
         "active_m",
         "total_m",
         "inference_ms",
+        "inference_ms_std",
         "train_ms",
+        "train_ms_std",
         "inference_vram_mb",
         "train_vram_mb",
         "inference_samples_per_s",
@@ -368,8 +354,8 @@ def print_row(row: dict) -> None:
     print(f"  {'tokens/sample':<18} {row['tokens_per_sample']:>8}")
     print(f"  {'status':<18} {row['status']}")
     if row["status"] == "ok":
-        print(f"  {'inference':<18} {row['inference_ms']:>8.1f} ms")
-        print(f"  {'train step':<18} {row['train_ms']:>8.1f} ms")
+        print(f"  {'inference':<18} {row['inference_ms']:>8.1f} ± {row['inference_ms_std']:>5.1f} ms")
+        print(f"  {'train step':<18} {row['train_ms']:>8.1f} ± {row['train_ms_std']:>5.1f} ms")
         print(f"  {'infer VRAM':<18} {row['inference_vram_mb']:>8.0f} MB")
         print(f"  {'train VRAM':<18} {row['train_vram_mb']:>8.0f} MB")
         print(f"  {'infer px/s':<18} {row['inference_pixels_per_s']:>8.0f}")
@@ -382,6 +368,11 @@ def print_row(row: dict) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--out-dir", type=str, default="/data/homezvol3/srachaba/temp")
+    args = parser.parse_args()
+    out_dir = Path(args.out_dir) / "problem_size_report"
+
     print("=== Problem size scaling benchmark ===")
     print(
         f"Batch={BATCH_SIZE}, Time={TIME_WINDOW}, Channels={CHANNELS}, "
@@ -403,7 +394,7 @@ def main() -> None:
                 rows.append(row)
                 print_row(row)
 
-    out_path = write_csv(rows)
+    out_path = write_csv(rows, out_dir)
     print(f"\nWrote problem size scaling CSV to {out_path}")
 
 
