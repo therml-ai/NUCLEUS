@@ -1538,9 +1538,19 @@ class ScOT(Swinv2PreTrainedModel):
         )
         
 class ScOTModule(L.LightningModule):
-    def __init__(self, config: ScOTConfig):
+    def __init__(self, scot_config: ScOTConfig, config: DictConfig):
         super().__init__()
-        self.model = ScOT(config)
+        self.scot_config = scot_config
+        self.model = ScOT(scot_config)
+        self.config = config
+        
+    def configure_optimizers(self):
+        optimizer = torch.optim.AdamW(
+            self.model.parameters(), 
+            lr=self.config.optim_cfg.params.lr, 
+            weight_decay=self.config.optim_cfg.params.weight_decay
+        )
+        return optimizer
         
     def forward(self, input, fluid_params, labels):
         return self.model(input, fluid_params=fluid_params, labels=labels)
@@ -1553,7 +1563,31 @@ class ScOTModule(L.LightningModule):
         fluid_params = batch.fluid_params_tensor
         out: ScOTOutput = self(inp, fluid_params, tgt)
         loss = out.loss
-        self.log("train_loss", loss)
+        pred = out.output
+        mae_loss = torch.nn.functional.l1_loss(pred, tgt)
+        mse_loss = torch.nn.functional.mse_loss(pred, tgt)
+        absmax_error = (pred - tgt).abs().max()
+        
+        self.log("train/data_loss", loss)
+        self.log("train/mae_loss", mae_loss)
+        self.log("train/mse_loss", mse_loss)
+        self.log("train/absmax_error", absmax_error)
+        return loss
+    
+    def validation_step(self, batch: CollatedBatch) -> torch.Tensor:
+        inp = batch.input.squeeze(1)
+        tgt = batch.target.squeeze(1)
+        fluid_params = batch.fluid_params_tensor
+        out: ScOTOutput = self(inp, fluid_params, tgt)
+        loss = out.loss
+        pred = out.output
+        mae_loss = torch.nn.functional.l1_loss(pred, tgt)
+        mse_loss = torch.nn.functional.mse_loss(pred, tgt)
+        absmax_error = (pred - tgt).abs().max()
+        self.log("val/loss", loss)
+        self.log("val/mae_loss", mae_loss)
+        self.log("val/mse_loss", mse_loss)
+        self.log("val/absmax_error", absmax_error)
         return loss
         
 @hydra.main(version_base=None, config_path="../../../config", config_name="poseidon")
@@ -1607,7 +1641,7 @@ def main(cfg: DictConfig) -> None:
     
     # Setup Wandb Logger.
     log_id_parts = [
-        "moe_dpot",
+        "poseidon",
         cfg.data_cfg.dataset.lower(),
         date.today().strftime("%Y-%m-%d"),
     ]
@@ -1656,7 +1690,7 @@ def main(cfg: DictConfig) -> None:
     
     model_config_dict = OmegaConf.to_container(cfg.model_cfg, resolve=True)
     scot_config = ScOTConfig(**model_config_dict)
-    module = ScOTModule(scot_config)
+    module = ScOTModule(scot_config, cfg)
     
     total_params = count_model_parameters(module.model, active=False)
     print(f"Total Model parameters: {total_params:,d}")

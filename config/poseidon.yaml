@@ -41,7 +41,7 @@ model_cfg:
   initializer_range: 0.02
   layer_norm_eps: 1e-5
   p: 1  # for loss: 1 for l1, 2 for l2
-  channel_slice_list_normalized_loss:  # if None will fall back to absolute loss otherwise normalized loss with split channels
+  channel_slice_list_normalized_loss: [0, 1, 2, 3] # if None will fall back to absolute loss otherwise normalized loss with split channels
   residual_model: "convnext"  # "convnext" or "resnet"
   use_conditioning: False
   learn_residual: True  # learn the residual for time-dependent problems

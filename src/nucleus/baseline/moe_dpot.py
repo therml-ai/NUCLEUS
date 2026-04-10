@@ -673,9 +673,9 @@ class MoEPOTNet(L.LightningModule):
         self.log("val/unweighted_router_loss", router_loss_total)
         self.log("val/loss", loss)
         self.log("val/cls_pred_correct", cls_pred_correct)
-        self.log("train/mae_loss", mae_loss)
-        self.log("train/mse_loss", mse_loss)
-        self.log("train/absmax_error", absmax_error)
+        self.log("val/mae_loss", mae_loss)
+        self.log("val/mse_loss", mse_loss)
+        self.log("val/absmax_error", absmax_error)
         return loss
     
 @hydra.main(version_base=None, config_path="../../../config", config_name="moe_dpot")
