@@ -1,5 +1,7 @@
 # NUCLEUS
 
+[![NUCLEUS-Unit-Test-CPU](https://github.com/therml-ai/NUCLEUS/actions/workflows/main.yml/badge.svg)](https://github.com/therml-ai/NUCLEUS/actions/workflows/main.yml)
+
 This repository contains the source code for NUCLEUS, a suite of tools for constructing and evaluating ML surrogates for simulations of two-phase liquid flows. Two-phase heat-transfer is the most efficient known form of cooling, but is still not fully understood and has a large design space. These simulations can be used to model different configurations of liquid cooling. Current work explores creating surrogates that can model different liquids, heater temperatures, and liquid temperatures (for saturated and subcooled nucleate boiling).
 
 ## Installation
