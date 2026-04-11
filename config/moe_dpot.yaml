@@ -32,7 +32,7 @@ model_cfg:
   mlp_ratio: 1
   act: "gelu"
   img_size: 64
-  patch_size: 16
+  patch_size: 4
   normalize: True
   time_agg: "mlp"
   n_cls: 6
