@@ -19,10 +19,10 @@ def test_neighbor_moe(device, model_name):
         patch_size=4,
         embed_dim=128,
         num_heads=2,
-        processor_blocks=12,
+        processor_blocks=2,
         num_fluid_params=16,
-        num_experts=12,
-        topk=4,
+        num_experts=4,
+        topk=2,
     )
     model = model.to(device)
     
