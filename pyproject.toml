@@ -37,14 +37,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-poseidon = [
-    # Poseidon relies on a swinv2 module that breaks with newer versions of Transformers.
-    # This is the version that is listed in their pyproject.toml
-    # https://github.com/camlab-ethz/poseidon/blob/b8fa28f59bd7f7673323f28d11a12c6f3a215c61/pyproject.toml
-    "transformers==4.35.2",    
-]
-
-[project.optional-dependencies]
 cpu = [
     "torch==2.10.0",
     "torchvision",
@@ -53,6 +45,12 @@ cpu = [
 cu128 = [
     "torch==2.10.0",
     "torchvision",
+]
+poseidon = [
+    # Poseidon relies on a swinv2 module that breaks with newer versions of Transformers.
+    # This is the version that is listed in their pyproject.toml
+    # https://github.com/camlab-ethz/poseidon/blob/b8fa28f59bd7f7673323f28d11a12c6f3a215c61/pyproject.toml
+    "transformers==4.35.2",    
 ]
 
 [tool.uv]
