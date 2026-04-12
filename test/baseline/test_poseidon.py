@@ -1,16 +1,15 @@
 import torch
 import pytest
 
-from nucleus.baseline.poseidon import ScOT, ScOTConfig, ScOTOutput
 from nucleus.testing.parametrize import parametrize_available_devices
 
 try:
-    import transformers
-    HAS_TRANSFORMERS = True
+    from nucleus.baseline.poseidon import ScOT, ScOTConfig, ScOTOutput
+    HAS_POSEIDON_DEPS = True
 except ImportError:
-    HAS_TRANSFORMERS = False
+    HAS_POSEIDON_DEPS = False
 
-@pytest.mark.skipif(not HAS_TRANSFORMERS, reason="transformers not installed")
+@pytest.mark.skipif(not HAS_POSEIDON_DEPS, reason="poseidon dependencies not installed")
 @parametrize_available_devices("device")
 def test_poseidon(device):
     cfg = ScOTConfig(
