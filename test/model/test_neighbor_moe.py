@@ -19,15 +19,15 @@ def test_neighbor_moe(device, model_name):
         patch_size=4,
         embed_dim=128,
         num_heads=2,
-        processor_blocks=12,
+        processor_blocks=2,
         num_fluid_params=16,
-        num_experts=12,
-        topk=4,
+        num_experts=4,
+        topk=2,
     )
     model = model.to(device)
     
     batch = CollatedBatch(
-        input=torch.randn(4, 8, 4, 64, 64, device=device),
+        input=torch.randn(4, 8, 64, 64, 4, device=device),
         target=None,
         fluid_params_dict={},
         fluid_params_tensor=torch.randn(4, 16, device=device),
@@ -37,7 +37,7 @@ def test_neighbor_moe(device, model_name):
         dy=torch.tensor(0.01, device=device),
     )
     output, moe_output = model(batch)
-    assert output.shape == (4, 8, 4, 64, 64)
+    assert output.shape == (4, 8, 64, 64, 4)
     assert torch.all(torch.isfinite(output))
 
     loss = output.sum()

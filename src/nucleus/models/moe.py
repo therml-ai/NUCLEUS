@@ -108,5 +108,4 @@ class MoEBase(nn.Module):
 
 @register_model("neighbor_moe")
 class NeighborMoE(MoEBase):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    pass

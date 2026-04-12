@@ -5,6 +5,8 @@ import math
 from dataclasses import dataclass
 from typing import Optional
 
+from nucleus.layers.moe.histogram import histogram
+
 def load_balance_loss(
     router_logits: torch.Tensor,
     expert_counts: torch.Tensor,
@@ -39,7 +41,7 @@ def get_token_indices(
         flat_expert_indices = topk_expert_indices.view(-1)
         # The argsort returns int64 indices, but we don't need more than 32 bits for the indices.
         indices = flat_expert_indices.argsort().to(torch.int32)
-        tokens_per_expert = torch.histc(flat_expert_indices, min=0, max=num_experts - 1, bins=num_experts)
+        tokens_per_expert = histogram(flat_expert_indices, num_experts)
         # group indices initialized like this to use int32.
         group_indices = torch.empty(tokens_per_expert.size(0), dtype=torch.int32, device=topk_expert_indices.device)
         torch.cumsum(tokens_per_expert, dim=0, out=group_indices)

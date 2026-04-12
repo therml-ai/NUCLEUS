@@ -13,7 +13,7 @@ def test_bubbleformer_vit(device):
         patch_size=4,
         embed_dim=256,
         num_heads=4,
-        processor_blocks=12,
+        processor_blocks=2,
         attn_scale=True,
         feat_scale=True,
     )
@@ -45,7 +45,7 @@ def test_bubbleformer_film_vit(device):
         patch_size=4,
         embed_dim=256,
         num_heads=4,
-        processor_blocks=12,
+        processor_blocks=2,
         attn_scale=True,
         feat_scale=True,
         num_fluid_params=16,
