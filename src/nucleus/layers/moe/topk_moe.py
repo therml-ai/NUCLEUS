@@ -5,6 +5,8 @@ import math
 from dataclasses import dataclass
 from typing import Optional
 
+from nucleus.layers.moe.histogram import histogram
+
 def load_balance_loss(
     router_logits: torch.Tensor,
     expert_counts: torch.Tensor,
