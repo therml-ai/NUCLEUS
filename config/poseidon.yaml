@@ -57,5 +57,5 @@ defaults:
   - _self_
   - data_cfg: poolboiling64
   - optim_cfg: adamw
-  - scheduler_cfg: trapezoidal
+  - scheduler_cfg: cosine_warmup
   - normalizer_cfg: standard
