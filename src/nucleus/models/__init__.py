@@ -9,7 +9,8 @@ from nucleus.data.batching import CollatedBatch
 from ._api import (
     register_model,
     list_models,
-    get_model
+    get_model,
+    get_model_class
 )
 
 # This is just a stupid wrapper to register the model and initialize with a dictionary.
