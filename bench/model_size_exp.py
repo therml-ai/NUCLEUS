@@ -17,7 +17,8 @@ torch._dynamo.config.cache_size_limit = 64
 # Shared benchmark setup
 B, T, H, W, C = 10, 5, 64, 64, 4
 NUM_FLUID_PARAMS = 16
-BENCHMARK_REPEATS = 50
+WARMUP_ITERS           = 5
+BENCHMARK_MIN_RUN_TIME = 5.0  # seconds for blocked_autorange
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Device: {device}\n")
@@ -195,15 +196,19 @@ tchw_batch = CollatedBatch(
 
 
 # Helpers
-def measure_inference_ms(model, batch, repeats=BENCHMARK_REPEATS) -> tuple[float, float]:
+def measure_inference_ms(model, batch) -> tuple[float, float]:
     model.eval()
     with torch.no_grad():
         timer = Timer(stmt="model(batch)", globals={"model": model, "batch": batch})
-        times_ms = [timer.timeit(1).mean * 1e3 for _ in range(repeats)]
-    return statistics.mean(times_ms), statistics.stdev(times_ms)
+        for _ in range(WARMUP_ITERS):
+            timer.timeit(1)
+        m = timer.blocked_autorange(min_run_time=BENCHMARK_MIN_RUN_TIME)
+    times_ms = [t * 1e3 for t in m.times]
+    std_ms = statistics.stdev(times_ms) if len(times_ms) > 1 else 0.0
+    return m.mean * 1e3, std_ms
 
 
-def measure_train_step_ms(model, batch, repeats=BENCHMARK_REPEATS) -> tuple[float, float]:
+def measure_train_step_ms(model, batch) -> tuple[float, float]:
     model.train()
     timer = Timer(
         stmt="""
@@ -214,8 +219,12 @@ model.zero_grad(set_to_none=True)
 """,
         globals={"model": model, "batch": batch},
     )
-    times_ms = [timer.timeit(1).mean * 1e3 for _ in range(repeats)]
-    return statistics.mean(times_ms), statistics.stdev(times_ms)
+    for _ in range(WARMUP_ITERS):
+        timer.timeit(1)
+    m = timer.blocked_autorange(min_run_time=BENCHMARK_MIN_RUN_TIME)
+    times_ms = [t * 1e3 for t in m.times]
+    std_ms = statistics.stdev(times_ms) if len(times_ms) > 1 else 0.0
+    return m.mean * 1e3, std_ms
 
 
 def measure_vram_mb(model, batch):
@@ -357,6 +366,7 @@ def main() -> None:
     parser.add_argument("--out-dir", type=str, default=None)
     args = parser.parse_args()
     out_dir = (Path(args.out_dir) if args.out_dir else Path.home() / "temp") / "ablation_report"
+    print(f"Results will be saved to: {(out_dir / 'ablation_benchmark.csv').resolve()}")
 
     rows = []
     rows.extend(run_matched_backbone_suite())
