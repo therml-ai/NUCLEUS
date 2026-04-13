@@ -1,4 +1,5 @@
-name: poseidon_big
+name: poseidon
+layout: "t c h w"
 params:
   # Important parameters for each model are listed in the train script:
   # https://github.com/camlab-ethz/poseidon/blob/main/scOT/train.py

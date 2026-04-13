@@ -38,7 +38,6 @@ from nucleus.data.batching import CollatedBatch, collate
 from nucleus.data.in_mem_forecast_dataset import InMemForecastDataset
 from nucleus.data.normalize import get_normalizer
 from nucleus.utils.parameter_count import count_model_parameters
-from nucleus.models import register_model
 
 ACTIVATION = {"gelu": nn.GELU()}
 
@@ -427,7 +426,6 @@ class TimeAggregator(nn.Module):
 
         return x
 
-@register_model("moe_dpot")
 class MoEPOTNet(L.LightningModule):
     def __init__(
             self, 
@@ -547,7 +545,8 @@ class MoEPOTNet(L.LightningModule):
         return grid
 
     ### in/out: B, X, Y, T, C
-    def forward(self, x) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(self, batch: CollatedBatch) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        x = batch.input
         B, _, _, T, _ = x.shape # [8,128,128,10,1]
         if self.normalize:
             mu, sigma = x.mean(dim=(1,2,3),keepdim=True), x.std(dim=(1,2,3),keepdim=True) + 1e-6    # B,1,1,1,C
@@ -633,7 +632,7 @@ class MoEPOTNet(L.LightningModule):
     def training_step(self, batch: CollatedBatch, batch_idx: int):
         cls_indices_target, cls_one_hot_target = self._cls_label(batch)
         
-        pred, cls_pred, router_loss_total = self.forward(batch.input)
+        pred, cls_pred, router_loss_total = self.forward(batch)
         data_loss = self.data_loss(pred, batch.target)
         cls_loss = self.cls_loss(cls_pred, cls_indices_target)
         loss = data_loss + cls_loss + router_loss_total * self.router_loss_weight
@@ -658,7 +657,7 @@ class MoEPOTNet(L.LightningModule):
     def validation_step(self, batch: CollatedBatch, batch_idx: int):
         cls_indices_target, cls_one_hot_target = self._cls_label(batch)
         
-        pred, cls_pred, router_loss_total = self.forward(batch.input)
+        pred, cls_pred, router_loss_total = self.forward(batch)
         data_loss = self.data_loss(pred, batch.target)
         cls_loss = self.cls_loss(cls_pred, cls_indices_target)
         loss = data_loss + cls_loss + router_loss_total * self.router_loss_weight

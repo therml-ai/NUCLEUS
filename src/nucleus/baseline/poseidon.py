@@ -70,7 +70,6 @@ from nucleus.data.in_mem_forecast_dataset import InMemForecastDataset
 from nucleus.data.batching import CollatedBatch, collate
 from nucleus.layers.mlp import FiLMMLP
 from nucleus.utils.parameter_count import count_model_parameters
-from nucleus.models import register_model
 
 @dataclass
 class ScOTOutput(ModelOutput):
@@ -1267,7 +1266,6 @@ class ScOTDecoder(nn.Module):
             reshaped_hidden_states=all_reshaped_hidden_states,
         )
 
-@register_model("poseidon")
 class ScOT(Swinv2PreTrainedModel):
     """Inspired by https://github.com/huggingface/transformers/blob/v4.35.2/src/transformers/models/swinv2/modeling_swinv2.py#L1129"""
 
@@ -1345,6 +1343,7 @@ class ScOT(Swinv2PreTrainedModel):
 
     def forward(
         self,
+        batch: CollatedBatch,
         pixel_values: Optional[torch.FloatTensor] = None,
         time: Optional[torch.FloatTensor] = None,
         fluid_params: Optional[torch.FloatTensor] = None,
@@ -1356,6 +1355,15 @@ class ScOT(Swinv2PreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, ScOTOutput]:
+
+        # [B, 1, C, H, W] -> [B, C, H, W]        
+        pixel_values = batch.input.squeeze(1)
+        if batch.target is not None:
+            labels = batch.target.squeeze(1)
+        else:
+            labels = None
+        fluid_params = batch.fluid_params_tensor
+        
         return_dict = (
             return_dict if return_dict is not None else self.config.use_return_dict
         )
@@ -1558,16 +1566,16 @@ class ScOTModule(L.LightningModule):
         
     def training_step(self, batch: CollatedBatch) -> torch.Tensor:
         # [B, 1, C, H, W] -> [B, C, H, W]
-        inp = batch.input.squeeze(1)
-        tgt = batch.target.squeeze(1)
+        #inp = batch.input.squeeze(1)
+        #tgt = batch.target.squeeze(1)
         
         fluid_params = batch.fluid_params_tensor
-        out: ScOTOutput = self(inp, fluid_params, tgt)
+        out: ScOTOutput = self(batch)
         loss = out.loss
         pred = out.output
-        mae_loss = torch.nn.functional.l1_loss(pred, tgt)
-        mse_loss = torch.nn.functional.mse_loss(pred, tgt)
-        absmax_error = (pred - tgt).abs().max()
+        mae_loss = torch.nn.functional.l1_loss(pred, batch.target)
+        mse_loss = torch.nn.functional.mse_loss(pred, batch.target)
+        absmax_error = (pred - batch.target).abs().max()
         
         self.log("train/data_loss", loss)
         self.log("train/mae_loss", mae_loss)
@@ -1576,20 +1584,21 @@ class ScOTModule(L.LightningModule):
         return loss
     
     def validation_step(self, batch: CollatedBatch) -> torch.Tensor:
-        inp = batch.input.squeeze(1)
-        tgt = batch.target.squeeze(1)
         fluid_params = batch.fluid_params_tensor
-        out: ScOTOutput = self(inp, fluid_params, tgt)
+        out: ScOTOutput = self(batch)
         loss = out.loss
         pred = out.output
-        mae_loss = torch.nn.functional.l1_loss(pred, tgt)
-        mse_loss = torch.nn.functional.mse_loss(pred, tgt)
-        absmax_error = (pred - tgt).abs().max()
+        mae_loss = torch.nn.functional.l1_loss(pred, batch.target)
+        mse_loss = torch.nn.functional.mse_loss(pred, batch.target)
+        absmax_error = (pred - batch.target).abs().max()
         self.log("val/loss", loss)
         self.log("val/mae_loss", mae_loss)
         self.log("val/mse_loss", mse_loss)
         self.log("val/absmax_error", absmax_error)
         return loss
+    
+def inference():
+    pass
         
 @hydra.main(version_base=None, config_path="../../../config", config_name="poseidon")
 def main(cfg: DictConfig) -> None:
