@@ -74,8 +74,8 @@ class ForecastModule(L.LightningModule):
             self.normalization_constants = normalization_constants
         self.log_wandb = log_wandb
 
-        #self.criterion = torch.nn.L1Loss()
-        self.criterion = L1RelativeLoss()
+        self.criterion = torch.nn.L1Loss()
+        #self.criterion = L1RelativeLoss()
 
         self.load_balance_loss_weight = self.model_cfg["params"].get("load_balance_loss_weight")
         self.z_loss_weight = self.model_cfg["params"].get("z_loss_weight")
