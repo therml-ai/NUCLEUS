@@ -23,7 +23,12 @@ TIME_WINDOW = 5
 CHANNELS = 4
 NUM_FLUID_PARAMS = 16
 RESOLUTIONS = [512, 256, 128, 64]
-BENCHMARK_REPEATS = 20
+WARMUP_ITERS           = 5
+BENCHMARK_MIN_RUN_TIME = 5.0  # seconds for blocked_autorange
+
+# Batch-size sweep experiment config
+BATCH_SIZE_SWEEP_RESOLUTION = 128
+BATCH_SIZES = [1, 2, 4, 8, 12, 16, 24, 32]
 
 # Shared backbone used by both experiments.
 COMMON_MODEL_CONFIG = dict(
@@ -37,6 +42,42 @@ COMMON_MODEL_CONFIG = dict(
 )
 
 # Two experiment definitions live here so you can edit them in one place.
+BATCH_SIZE_SWEEP_EXPERIMENT = dict(
+    name="batch_size_sweep",
+    description=f"Fixed resolution {BATCH_SIZE_SWEEP_RESOLUTION}x{BATCH_SIZE_SWEEP_RESOLUTION}, sweep batch sizes to measure throughput scaling.",
+    models=[
+        dict(
+            model_name="neighbor_vit",
+            label="NATTEN + MLP",
+            cfg=dict(mlp_ratio=32.0),
+            is_moe=False,
+        ),
+        dict(
+            model_name="nucleus1_vit_moe",
+            label="Full Attn + MoE",
+            cfg=dict(num_experts=8, topk=2, load_balance_loss_weight=1e-5),
+            is_moe=True,
+        ),
+        dict(
+            model_name="nucleus1_moe",
+            label="NUCLEUS",
+            cfg=dict(num_experts=8, topk=2, load_balance_loss_weight=1e-5),
+            is_moe=True,
+        ),
+        dict(
+            model_name="bubbleformer_film_vit",
+            label="Bubbleformer",
+            cfg=dict(
+                time_window=TIME_WINDOW,
+                attn_scale=True,
+                feat_scale=True,
+                mlp_ratio=32.0,
+            ),
+            is_moe=False,
+        ),
+    ],
+)
+
 EXPERIMENTS = [
     dict(
         name="mlp_ratio_32",
@@ -112,12 +153,12 @@ EXPERIMENTS = [
 
 
 # Batch + metrics helpers
-def make_batch(resolution: int) -> CollatedBatch:
+def make_batch(resolution: int, batch_size: int = BATCH_SIZE) -> CollatedBatch:
     return CollatedBatch(
-        input=torch.randn(BATCH_SIZE, TIME_WINDOW, CHANNELS, resolution, resolution, device=DEVICE),
+        input=torch.randn(batch_size, TIME_WINDOW, CHANNELS, resolution, resolution, device=DEVICE),
         target=None,
         fluid_params_dict={},
-        fluid_params_tensor=torch.randn(BATCH_SIZE, NUM_FLUID_PARAMS, device=DEVICE),
+        fluid_params_tensor=torch.randn(batch_size, NUM_FLUID_PARAMS, device=DEVICE),
         x_grid=torch.linspace(1, 1, resolution, device=DEVICE),
         y_grid=torch.linspace(1, 1, resolution, device=DEVICE),
         dx=torch.tensor(1.0 / resolution, device=DEVICE),
@@ -129,8 +170,8 @@ def tokens_per_sample(resolution: int, patch_size: int) -> int:
     return TIME_WINDOW * (resolution // patch_size) * (resolution // patch_size)
 
 
-def pixels_per_batch(resolution: int) -> int:
-    return BATCH_SIZE * TIME_WINDOW * resolution * resolution
+def pixels_per_batch(resolution: int, batch_size: int = BATCH_SIZE) -> int:
+    return batch_size * TIME_WINDOW * resolution * resolution
 
 
 def scalar_loss(output):
@@ -147,15 +188,19 @@ def scalar_loss(output):
     return output.sum()
 
 
-def measure_inference_ms(model, batch, repeats=BENCHMARK_REPEATS) -> tuple[float, float]:
+def measure_inference_ms(model, batch) -> tuple[float, float]:
     model.eval()
     with torch.no_grad():
         timer = Timer(stmt="model(batch)", globals={"model": model, "batch": batch})
-        times_ms = [timer.timeit(1).mean * 1e3 for _ in range(repeats)]
-    return statistics.mean(times_ms), statistics.stdev(times_ms)
+        for _ in range(WARMUP_ITERS):
+            timer.timeit(1)
+        m = timer.blocked_autorange(min_run_time=BENCHMARK_MIN_RUN_TIME)
+    times_ms = [t * 1e3 for t in m.times]
+    std_ms = statistics.stdev(times_ms) if len(times_ms) > 1 else 0.0
+    return m.mean * 1e3, std_ms
 
 
-def measure_train_step_ms(model, batch, repeats=BENCHMARK_REPEATS) -> tuple[float, float]:
+def measure_train_step_ms(model, batch) -> tuple[float, float]:
     model.train()
     timer = Timer(
         stmt="""
@@ -166,8 +211,12 @@ model.zero_grad(set_to_none=True)
 """,
         globals={"model": model, "batch": batch, "scalar_loss": scalar_loss},
     )
-    times_ms = [timer.timeit(1).mean * 1e3 for _ in range(repeats)]
-    return statistics.mean(times_ms), statistics.stdev(times_ms)
+    for _ in range(WARMUP_ITERS):
+        timer.timeit(1)
+    m = timer.blocked_autorange(min_run_time=BENCHMARK_MIN_RUN_TIME)
+    times_ms = [t * 1e3 for t in m.times]
+    std_ms = statistics.stdev(times_ms) if len(times_ms) > 1 else 0.0
+    return m.mean * 1e3, std_ms
 
 
 def measure_inference_vram_mb(model, batch) -> float:
@@ -309,6 +358,85 @@ def benchmark_resolution(experiment_name: str, model_spec: dict, resolution: int
     return row
 
 
+def benchmark_batch_size(experiment_name: str, model_spec: dict, batch_size: int) -> dict:
+    resolution = BATCH_SIZE_SWEEP_RESOLUTION
+    cfg = {**COMMON_MODEL_CONFIG, **model_spec["cfg"]}
+    patch_size = cfg["patch_size"]
+    ppb = pixels_per_batch(resolution, batch_size)
+    row = {
+        "experiment": experiment_name,
+        "model": model_spec["model_name"],
+        "label": model_spec["label"],
+        "resolution": resolution,
+        "batch_size": batch_size,
+        "time_window": TIME_WINDOW,
+        "patch_size": patch_size,
+        "tokens_per_sample": tokens_per_sample(resolution, patch_size),
+        "pixels_per_batch": ppb,
+        "active_m": float("nan"),
+        "total_m": float("nan"),
+        "inference_ms": float("nan"),
+        "inference_ms_std": float("nan"),
+        "train_ms": float("nan"),
+        "train_ms_std": float("nan"),
+        "inference_vram_mb": float("nan"),
+        "train_vram_mb": float("nan"),
+        "inference_samples_per_s": float("nan"),
+        "train_samples_per_s": float("nan"),
+        "inference_pixels_per_s": float("nan"),
+        "train_pixels_per_s": float("nan"),
+        "mean_tokens_per_expert": float("nan"),
+        "mean_load_imbalance": float("nan"),
+        "mean_active_experts_frac": float("nan"),
+        "status": "ok",
+        "error": "",
+    }
+
+    torch._dynamo.reset()
+    model = None
+    try:
+        batch = make_batch(resolution, batch_size)
+        model = get_model(model_spec["model_name"], **cfg).to(DEVICE)
+
+        row["total_m"] = count_model_parameters(model, active=False) / 1e6
+        row["active_m"] = count_model_parameters(model, active=True) / 1e6
+
+        row["inference_ms"], row["inference_ms_std"] = measure_inference_ms(model, batch)
+        row["train_ms"], row["train_ms_std"] = measure_train_step_ms(model, batch)
+        row["inference_vram_mb"] = measure_inference_vram_mb(model, batch)
+        row["train_vram_mb"] = measure_train_vram_mb(model, batch)
+
+        inf_s = row["inference_ms"] / 1e3
+        train_s = row["train_ms"] / 1e3
+        row["inference_samples_per_s"] = batch_size / inf_s
+        row["train_samples_per_s"] = batch_size / train_s
+        row["inference_pixels_per_s"] = ppb / inf_s
+        row["train_pixels_per_s"] = ppb / train_s
+
+        if model_spec["is_moe"]:
+            model.eval()
+            with torch.no_grad():
+                output = model(batch)
+            row.update(extract_moe_metrics(output))
+
+    except RuntimeError as exc:
+        message = str(exc)
+        if "out of memory" in message.lower():
+            row["status"] = "oom"
+        else:
+            row["status"] = "error"
+        row["error"] = message.replace("\n", " ")[:500]
+        if DEVICE.type == "cuda":
+            torch.cuda.empty_cache()
+    finally:
+        if model is not None:
+            del model
+        if DEVICE.type == "cuda":
+            torch.cuda.empty_cache()
+
+    return row
+
+
 def write_csv(rows: list[dict], out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "problem_size_scaling.csv"
@@ -348,7 +476,7 @@ def write_csv(rows: list[dict], out_dir: Path) -> Path:
 
 
 def print_row(row: dict) -> None:
-    print(f"\n  [{row['label']}] @ {row['resolution']}x{row['resolution']}")
+    print(f"\n  [{row['label']}] @ {row['resolution']}x{row['resolution']}  batch={row['batch_size']}")
     print(f"  {'active':<18} {row['active_m']:>8.1f}M")
     print(f"  {'total':<18} {row['total_m']:>8.1f}M")
     print(f"  {'tokens/sample':<18} {row['tokens_per_sample']:>8}")
@@ -372,6 +500,7 @@ def main() -> None:
     parser.add_argument("--out-dir", type=str, default=None)
     args = parser.parse_args()
     out_dir = (Path(args.out_dir) if args.out_dir else Path.home() / "temp") / "problem_size_report"
+    print(f"Results will be saved to: {(out_dir / 'problem_size_scaling.csv').resolve()}")
 
     print("=== Problem size scaling benchmark ===")
     print(
@@ -393,6 +522,20 @@ def main() -> None:
                 row = benchmark_resolution(experiment["name"], model_spec, resolution)
                 rows.append(row)
                 print_row(row)
+
+    exp = BATCH_SIZE_SWEEP_EXPERIMENT
+    print(f"\n{'=' * 72}")
+    print(f"Experiment: {exp['name']}")
+    print(exp["description"])
+    print(f"{'=' * 72}")
+    for batch_size in BATCH_SIZES:
+        print(f"\n{'-' * 72}")
+        print(f"Batch size: {batch_size}")
+        print(f"{'-' * 72}")
+        for model_spec in exp["models"]:
+            row = benchmark_batch_size(exp["name"], model_spec, batch_size)
+            rows.append(row)
+            print_row(row)
 
     out_path = write_csv(rows, out_dir)
     print(f"\nWrote problem size scaling CSV to {out_path}")

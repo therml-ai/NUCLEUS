@@ -30,7 +30,7 @@ from nucleus.layers.nucleus1_space_time_attention import (
 )
 
 #CONFIG
-BATCH       = 1
+BATCH       = 16
 TIME        = 5
 EMBED_DIM   = 384
 NUM_HEADS   = 6
@@ -44,7 +44,12 @@ LOAD_BAL_WT = 1e-5
 PATCH_SIZE   = 8   # only used for axis labels
 SPATIAL_SIZES = [8, 16, 32, 64, 96, 128, 256]  # patch grid side length
 
-BENCHMARK_REPEATS = 30
+WARMUP_ITERS           = 5
+BENCHMARK_MIN_RUN_TIME = 5.0  # seconds for blocked_autorange
+
+# --- Batch-size sweep config ---
+BATCH_SIZES         = [1, 2, 4, 8, 16, 24, 32, 48, 64, 128]
+BATCH_SWEEP_SPATIAL = 128   # patch-grid side length used for the batch sweep (32 → 256px at patch_size=8)
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -83,8 +88,12 @@ def benchmark_ms(module: nn.Module, x: torch.Tensor) -> tuple[float, float]:
     module.eval()
     with torch.no_grad():
         timer = Timer(stmt="module(x)", globals={"module": module, "x": x})
-        times_ms = [timer.timeit(1).mean * 1e3 for _ in range(BENCHMARK_REPEATS)]
-    return statistics.mean(times_ms), statistics.stdev(times_ms)
+        for _ in range(WARMUP_ITERS):
+            timer.timeit(1)
+        m = timer.blocked_autorange(min_run_time=BENCHMARK_MIN_RUN_TIME)
+    times_ms = [t * 1e3 for t in m.times]
+    std_ms = statistics.stdev(times_ms) if len(times_ms) > 1 else 0.0
+    return m.mean * 1e3, std_ms
 
 
 def run_sweep():
@@ -167,6 +176,85 @@ def make_plots(results, spatial_patch_counts, out_dir: Path):
     plt.show()
 
 
+def run_batch_sweep():
+    """Sweep over BATCH_SIZES at a fixed spatial resolution for every module."""
+    h = w = BATCH_SWEEP_SPATIAL
+    px = BATCH_SWEEP_SPATIAL * PATCH_SIZE
+    print(f"\n=== Batch-size sweep  ({BATCH_SWEEP_SPATIAL}×{BATCH_SWEEP_SPATIAL} patches, {px}×{px}px) ===")
+
+    results = {name: {"flops": [], "ms": [], "ms_std": []} for name in MODULES}
+
+    for bs in BATCH_SIZES:
+        x = torch.randn(bs, TIME, h, w, EMBED_DIM, device=DEVICE)
+        print(f"\n  batch={bs}")
+        for name, build_fn in MODULES.items():
+            module = build_fn().to(DEVICE)
+            flops = count_flops(module, x)
+            ms, ms_std = benchmark_ms(module, x)
+            results[name]["flops"].append(flops / 1e9)
+            results[name]["ms"].append(ms)
+            results[name]["ms_std"].append(ms_std)
+            del module
+            if DEVICE.type == "cuda":
+                torch.cuda.empty_cache()
+            print(f"    {name:<35}  {flops/1e9:>7.2f} GFLOPs   {ms:>7.2f} ± {ms_std:>5.2f} ms")
+
+    return results
+
+
+def make_batch_plots(results, out_dir: Path):
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    px = BATCH_SWEEP_SPATIAL * PATCH_SIZE
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+    fig.suptitle(
+        f"Batch-size scaling  |  spatial={BATCH_SWEEP_SPATIAL}×{BATCH_SWEEP_SPATIAL} ({px}×{px}px), "
+        f"T={TIME}, embed={EMBED_DIM}, heads={NUM_HEADS}, experts={NUM_EXPERTS}, topk={TOPK}",
+        fontsize=10,
+    )
+
+    # ---- FLOPs ----
+    ax = axes[0]
+    for name, data in results.items():
+        ax.plot(BATCH_SIZES, data["flops"], label=name, **STYLES[name], linewidth=2, markersize=6)
+    ax.set_xscale("log", base=2)
+    ax.set_xticks(BATCH_SIZES)
+    ax.xaxis.set_major_formatter(ticker.FixedFormatter([str(b) for b in BATCH_SIZES]))
+    ax.set_xlabel("Batch size")
+    ax.set_ylabel("GFLOPs (forward pass)")
+    ax.set_title("FLOPs vs batch size")
+    ax.legend(fontsize=8)
+    ax.grid(True, which="both", alpha=0.3)
+
+    # ---- Runtime ----
+    ax = axes[1]
+    for name, data in results.items():
+        style = STYLES[name]
+        ms  = data["ms"]
+        std = data["ms_std"]
+        ax.plot(BATCH_SIZES, ms, label=name, **style, linewidth=2, markersize=6)
+        ax.fill_between(
+            BATCH_SIZES,
+            [m - s for m, s in zip(ms, std)],
+            [m + s for m, s in zip(ms, std)],
+            color=style["color"], alpha=0.15,
+        )
+    ax.set_xscale("log", base=2)
+    ax.set_xticks(BATCH_SIZES)
+    ax.xaxis.set_major_formatter(ticker.FixedFormatter([str(b) for b in BATCH_SIZES]))
+    ax.set_xlabel("Batch size")
+    ax.set_ylabel("Wall time (ms)")
+    ax.set_title("Runtime vs batch size")
+    ax.legend(fontsize=8)
+    ax.grid(True, which="both", alpha=0.3)
+
+    plt.tight_layout()
+    out_path = out_dir / "batch_scaling.png"
+    plt.savefig(out_path, dpi=150, bbox_inches="tight")
+    print(f"\nSaved plot to {out_path}")
+    plt.show()
+
+
 def sanity_check():
     full_block   = Nucleus1TransformerMoEBlock(EMBED_DIM, NUM_HEADS, NUM_EXPERTS, TOPK, LOAD_BAL_WT, MLP_RATIO)
     axial_block  = Nucleus1TransformerAxialMoEBlock(EMBED_DIM, NUM_HEADS, NUM_EXPERTS, TOPK, LOAD_BAL_WT, MLP_RATIO)
@@ -185,6 +273,10 @@ if __name__ == "__main__":
     out_dir = (Path(args.out_dir) if args.out_dir else Path.home() / "temp") / "block_flop_profile"
 
     print(f"Device: {DEVICE}")
+    print(f"Results will be saved to: {out_dir.resolve()}")
     sanity_check()
-    results, spatial_patch_counts = run_sweep()
-    make_plots(results, spatial_patch_counts, out_dir)
+    #results, spatial_patch_counts = run_sweep()
+    #make_plots(results, spatial_patch_counts, out_dir)
+
+    batch_results = run_batch_sweep()
+    make_batch_plots(batch_results, out_dir)

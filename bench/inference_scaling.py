@@ -26,7 +26,8 @@ TIME_WINDOW      = 5
 CHANNELS         = 4
 NUM_FLUID_PARAMS = 16
 RESOLUTIONS      = [64, 128, 256, 512, 768, 1024, 1536, 2048]
-BENCHMARK_REPEATS = 20
+WARMUP_ITERS          = 5
+BENCHMARK_MIN_RUN_TIME = 5.0  # seconds for blocked_autorange
 
 COMMON_MODEL_CONFIG = dict(
     input_fields=CHANNELS,
@@ -73,8 +74,12 @@ def measure_inference(model, batch) -> tuple[float, float]:
     model.eval()
     with torch.no_grad():
         timer = Timer(stmt="model(batch)", globals={"model": model, "batch": batch})
-        times_ms = [timer.timeit(1).mean * 1e3 for _ in range(BENCHMARK_REPEATS)]
-    return statistics.mean(times_ms), statistics.stdev(times_ms)
+        for _ in range(WARMUP_ITERS):
+            timer.timeit(1)
+        m = timer.blocked_autorange(min_run_time=BENCHMARK_MIN_RUN_TIME)
+    times_ms = [t * 1e3 for t in m.times]
+    std_ms = statistics.stdev(times_ms) if len(times_ms) > 1 else 0.0
+    return m.mean * 1e3, std_ms
 
 
 def measure_vram(model, batch) -> float:
@@ -168,5 +173,6 @@ if __name__ == "__main__":
     out_dir = (Path(args.out_dir) if args.out_dir else Path.home() / "temp") / "inference_scaling"
 
     print(f"Device: {DEVICE}")
+    print(f"Results will be saved to: {out_dir.resolve()}")
     results = run_sweep()
     make_plots(results, out_dir)
