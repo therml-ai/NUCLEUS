@@ -5,8 +5,8 @@ nodes: 1
 devices: 1
 
 max_epochs:
-max_steps: 40000
-val_check_interval: 2000
+max_steps: 100000
+val_check_interval: 5000
 batch_size: 16
 accumulate_grad_batches: 1
 
@@ -19,43 +19,16 @@ layout: "t c h w"
 
 checkpoint_path:
 commit_sha:
-
-model_cfg:
-  # Important parameters for each model are listed in the train script:
-  # https://github.com/camlab-ethz/poseidon/blob/main/scOT/train.py
-  # Baseed on Poseidon-B
-  num_fluid_params: 16
-  num_heads: [3, 6, 12, 24]
-  skip_connections: [2, 2, 2, 0]
-  window_size: 16
-  patch_size: 4
-  mlp_ratio: 4.0
-  depths: [8, 8, 8, 8]
-  embed_dim: 192
   
-  # Custom for bubbleml
-  image_size: 64
-  num_channels: 4 # sdf, temp, velx, vely
-  num_out_channels: 4 # sdf, temp, velx, vely
-  p: 1  # for loss: 1 for l1, 2 for l2
-  channel_slice_list_normalized_loss: [0, 1, 2, 3]
-  use_conditioning: False
-  learn_residual: True  # learn the residual for time-dependent problems
+optim_cfg:
+  name: adamw
+  params:
+    lr: 3e-4
+    weight_decay: 0.1
 
-  # Original Params
-  qkv_bias: True
-  hidden_dropout_prob: 0.0
-  attention_probs_dropout_prob: 0.0
-  drop_path_rate: 0.1
-  hidden_act: "gelu"
-  use_absolute_embeddings: False
-  initializer_range: 0.02
-  layer_norm_eps: 1e-5
-  residual_model: "convnext"  # "convnext" or "resnet"
-  
 defaults:
   - _self_
+  - model_cfg: poseidon_big
   - data_cfg: poolboiling64
-  - optim_cfg: adamw
   - scheduler_cfg: cosine_warmup
-  - normalizer_cfg: standard
+  - normalizer_cfg: no

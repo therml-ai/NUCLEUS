@@ -70,6 +70,7 @@ from nucleus.data.in_mem_forecast_dataset import InMemForecastDataset
 from nucleus.data.batching import CollatedBatch, collate
 from nucleus.layers.mlp import FiLMMLP
 from nucleus.utils.parameter_count import count_model_parameters
+from nucleus.models import register_model
 
 @dataclass
 class ScOTOutput(ModelOutput):
@@ -1266,7 +1267,7 @@ class ScOTDecoder(nn.Module):
             reshaped_hidden_states=all_reshaped_hidden_states,
         )
 
-
+@register_model("poseidon")
 class ScOT(Swinv2PreTrainedModel):
     """Inspired by https://github.com/huggingface/transformers/blob/v4.35.2/src/transformers/models/swinv2/modeling_swinv2.py#L1129"""
 
@@ -1688,7 +1689,7 @@ def main(cfg: DictConfig) -> None:
         ]
     )
     
-    model_config_dict = OmegaConf.to_container(cfg.model_cfg, resolve=True)
+    model_config_dict = OmegaConf.to_container(cfg.model_cfg.params, resolve=True)
     scot_config = ScOTConfig(**model_config_dict)
     module = ScOTModule(scot_config, cfg)
     

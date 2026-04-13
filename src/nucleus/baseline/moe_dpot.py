@@ -38,6 +38,7 @@ from nucleus.data.batching import CollatedBatch, collate
 from nucleus.data.in_mem_forecast_dataset import InMemForecastDataset
 from nucleus.data.normalize import get_normalizer
 from nucleus.utils.parameter_count import count_model_parameters
+from nucleus.models import register_model
 
 ACTIVATION = {"gelu": nn.GELU()}
 
@@ -426,6 +427,7 @@ class TimeAggregator(nn.Module):
 
         return x
 
+@register_model("moe_dpot")
 class MoEPOTNet(L.LightningModule):
     def __init__(
             self, 
@@ -687,8 +689,8 @@ def main(cfg: DictConfig) -> None:
         filenames=cfg.data_cfg.train_paths,
         input_fields=cfg.data_cfg.input_fields,
         output_fields=cfg.data_cfg.output_fields,
-        history_time_window=cfg.model_cfg.in_timesteps,
-        future_time_window=cfg.model_cfg.out_timesteps,
+        history_time_window=cfg.model_cfg.params.in_timesteps,
+        future_time_window=cfg.model_cfg.params.out_timesteps,
         time_step=cfg.data_cfg.time_step,
         start_time=cfg.data_cfg.start_time,
         normalizer=None,
@@ -699,8 +701,8 @@ def main(cfg: DictConfig) -> None:
         filenames=cfg.data_cfg.val_paths,
         input_fields=cfg.data_cfg.input_fields,
         output_fields=cfg.data_cfg.output_fields,
-        history_time_window=cfg.model_cfg.in_timesteps,
-        future_time_window=cfg.model_cfg.out_timesteps,
+        history_time_window=cfg.model_cfg.params.in_timesteps,
+        future_time_window=cfg.model_cfg.params.out_timesteps,
         time_step=cfg.data_cfg.time_step,
         start_time=cfg.data_cfg.start_time,
         normalizer=None,
@@ -779,9 +781,9 @@ def main(cfg: DictConfig) -> None:
     )
     
     model = MoEPOTNet(
-        OmegaConf.to_container(cfg.model_cfg),
+        OmegaConf.to_container(cfg.model_cfg.params),
         cfg.router_loss_weight,
-        cfg.optim_cfg.lr
+        cfg.optim_cfg.params.lr
     )
     
     total_params = count_model_parameters(model, active=False)
