@@ -5,8 +5,8 @@ nodes: 1
 devices: 1
 
 max_epochs:
-max_steps: 40000
-val_check_interval: 2000
+max_steps: 100000
+val_check_interval: 5000
 batch_size: 16
 accumulate_grad_batches: 1
 
@@ -15,35 +15,21 @@ future_time_window: 8
 time_step: 1
 start_time: 100
 
-router_loss_weight: 0.01
+router_loss_weight: 0.001
 layout: "h w t c"
 
 checkpoint_path:
 commit_sha:
 
-model_cfg:
-  in_channels: 4
-  out_channels: 4
-  in_timesteps: 8
-  out_timesteps: 8
-  n_blocks: 8
-  modes: 32
-  embed_dim: 768
-  mlp_ratio: 1
-  act: "gelu"
-  img_size: 64
-  patch_size: 4
-  normalize: True
-  time_agg: "mlp"
-  n_cls: 6
-  is_finetune: False
-  mixing_type: "afno"
-  depth: 8
-  out_layer_dim: 256
+optim_cfg:
+  name: adamw
+  params:
+    lr: 3e-4
+    weight_decay: 0.1
 
 defaults:
   - _self_
+  - model_cfg: moe_dpot
   - data_cfg: poolboiling64
-  - optim_cfg: adamw
-  - scheduler_cfg: trapezoidal
-  - normalizer_cfg: standard
+  - scheduler_cfg: cosine_warmup
+  - normalizer_cfg: no

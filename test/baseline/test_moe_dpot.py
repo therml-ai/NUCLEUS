@@ -1,6 +1,7 @@
 import torch
 from nucleus.baseline.moe_dpot import MoEPOTNet
 from nucleus.testing.parametrize import parametrize_available_devices
+from nucleus.data.batching import CollatedBatch
 
 @parametrize_available_devices("device")
 def test_moe_dpot(device):
@@ -28,8 +29,18 @@ def test_moe_dpot(device):
 
     model = MoEPOTNet(config, 0.1, 0.001).to(device)
     
-    input = torch.randn(4, 64, 64, 8, 4).to(device).requires_grad_(True)
-    output, cls_pred, router_loss_total = model(input)
+    batch = CollatedBatch(
+        input=torch.randn(4, 64, 64, 8, 4).to(device).requires_grad_(True),
+        target=None,
+        fluid_params_dict={},
+        fluid_params_tensor=torch.randn(4, 16, device=device),
+        x_grid=torch.randn(64, device=device),
+        y_grid=torch.randn(64, device=device),
+        dx=torch.tensor(0.01, device=device),
+        dy=torch.tensor(0.01, device=device),
+    )
+    
+    output, cls_pred, router_loss_total = model(batch)
     assert output.shape == (4, 64, 64, 8, 4)
     assert torch.all(torch.isfinite(output))
     assert cls_pred.shape == (4, 6)

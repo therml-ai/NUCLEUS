@@ -1,5 +1,6 @@
 name: bubbleformer_film_vit
 train_module_name: conditioned_forecast
+layout: "t c h w"
 params:
   patch_size: 16
   embed_dim: 768

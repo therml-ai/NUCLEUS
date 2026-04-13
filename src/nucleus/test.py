@@ -8,6 +8,8 @@ from nucleus.data.layout import convert_layout
 from nucleus.layers.moe.topk_moe import TopkMoEOutput
 from nucleus.utils.physical_metrics import PhysicalMetrics, BubbleMetrics, physical_metrics, bubble_metrics
 from nucleus.utils.sdf_reinit import sdf_reinit_fast_marching
+from nucleus.baseline.poseidon import ScOTOutput
+from nucleus.baseline.moe_dpot import MoEPOTNet
 
 
 @dataclass
@@ -84,8 +86,8 @@ def run_test(cfg, model, normalizer, test_file_path: str, max_timesteps: int):
         filenames=[test_file_path],
         input_fields=["dfun", "temperature", "velx", "vely"],
         output_fields=["dfun", "temperature", "velx", "vely"],
-        future_time_window=5,
-        history_time_window=5,
+        future_time_window=cfg.future_time_window,
+        history_time_window=cfg.history_time_window,
         time_step=1,
         start_time=400,
         normalizer=normalizer,
@@ -101,7 +103,7 @@ def run_test(cfg, model, normalizer, test_file_path: str, max_timesteps: int):
     moe_outputs = []
 
     with torch.inference_mode():
-        for itr in range(0, max_timesteps, skip_itrs):            
+        for itr in range(0, max_timesteps, skip_itrs):
             data: Data = test_dataset[itr]
             
             batch = data.to_collated_batch()
@@ -120,7 +122,13 @@ def run_test(cfg, model, normalizer, test_file_path: str, max_timesteps: int):
             torch.compiler.cudagraph_mark_step_begin()
             output = model(batch.get_input())
             if isinstance(output, tuple):
-                pred, moe_output = output
+                if isinstance(model, MoEPOTNet):
+                    output, _, _ = output
+                else:
+                    pred, moe_output = output
+            if isinstance(output, ScOTOutput):
+                pred = output.output.unsqueeze(1) # [B, 1, C, H, W]
+                moe_output = []
             else:
                 pred = output
                 moe_output = []
@@ -128,18 +136,18 @@ def run_test(cfg, model, normalizer, test_file_path: str, max_timesteps: int):
             if len(moe_output) > 0:
                 # NOTE: only tracking moe outputs for every layer. Must move to CPU to avoid mem overflow.
                 moe_outputs.append([m.detach().to('cpu') for m in moe_output])
-
-            # clip pred temperature to be below wall temperature.
-            pred[..., 1] = torch.clamp(
-                pred[..., 1], 
-                max=wall_temp
-            )
             
             pred = normalizer.unnormalize(pred, bulk_temp)
             tgt = normalizer.unnormalize(tgt, bulk_temp)
 
             pred = pred.to(torch.float32).squeeze(0).detach().cpu()
             tgt = tgt.to(torch.float32).squeeze(0).detach().cpu()
+            
+            pred_finite = pred.isfinite().all()
+            tgt_finite = tgt.isfinite().all()
+            if not (pred_finite and tgt_finite):
+                print("Stoppign at iter {iter}, hit NaN in pred or tgt.")
+                break
 
             # Reinitialize the SDF at each timestep
             #pred[:, 0] = sdf_reinit_fast_marching(pred[:, 0], dx=1 / 4, far_threshold=4)
