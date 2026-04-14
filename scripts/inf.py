@@ -18,6 +18,7 @@ from nucleus.plot.plot_metrics import (
     plot_bubble_counts,
 )
 from nucleus.utils.set_fp32_precision import set_fp32_precision
+from lightning import LightningModule
 
 @hydra.main(version_base=None, config_path="../config", config_name="default")
 def main(cfg: DictConfig):
@@ -26,15 +27,17 @@ def main(cfg: DictConfig):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
     model_name = cfg.model_cfg.name
-    model_kwargs = {
-        "input_fields": 4,
-        "output_fields": 4,
-        "patch_size": cfg.model_cfg.params.patch_size,
-        "embed_dim": cfg.model_cfg.params.embed_dim,
-        "processor_blocks": cfg.model_cfg.params.processor_blocks,
-        "num_heads": cfg.model_cfg.params.num_heads,
-        "num_fluid_params": cfg.model_cfg.params.num_fluid_params,
-    }
+    #model_kwargs = {
+    #    "input_fields": 4,
+    #    "output_fields": 4,
+    #    "patch_size": cfg.model_cfg.params.patch_size,
+    #    "embed_dim": cfg.model_cfg.params.embed_dim,
+    #    "processor_blocks": cfg.model_cfg.params.processor_blocks,
+    #    "num_heads": cfg.model_cfg.params.num_heads,
+    #    "num_fluid_params": cfg.model_cfg.params.num_fluid_params,
+    #}
+    
+    model_kwargs = OmegaConf.to_container(cfg.model_cfg.params, resolve=True)
     
     if cfg.model_cfg.params.get("num_experts", None) is not None:
         model_kwargs["num_experts"] = cfg.model_cfg.params.num_experts
@@ -49,7 +52,10 @@ def main(cfg: DictConfig):
     weight_state_dict = OrderedDict()
     for key, val in model_data["state_dict"].items():
         print(key, val.shape)
-        name = key[6:]
+        if isinstance(model, LightningModule):
+            name = key
+        else:
+            name = key[6:]
         weight_state_dict[name] = val
     del model_data
     model.load_state_dict(weight_state_dict)

@@ -21,8 +21,7 @@ def list_models() -> List[str]:
     Returns:
         models (list[str]) : List of all predefined models
     """
-    print("Available models:")
-    return sorted(list(MODELS.keys()))
+    return sorted(list(MODELS.keys()), key=lambda x: x[0])
 
 def get_model(name: str, **config: Any) -> nn.Module:
     """
@@ -38,3 +37,11 @@ def get_model(name: str, **config: Any) -> nn.Module:
         raise KeyError(f"Model {name} not found. Available Models: {MODELS.keys()}") from exc
 
     return fn(**config)
+
+def get_model_class(name: str) -> nn.Module:
+    name = name.lower()
+    try:
+        fn = MODELS[name]
+    except KeyError as exc:
+        raise KeyError(f"Model {name} not found. Available Models: {MODELS.keys()}") from exc
+    return fn

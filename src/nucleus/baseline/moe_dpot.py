@@ -27,7 +27,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch.nn.modules.loss import _WeightedLoss
-from typing import Tuple
+from typing import Tuple, Optional
 import numpy as np
 from einops import rearrange
 import lightning as L
@@ -430,8 +430,8 @@ class MoEPOTNet(L.LightningModule):
     def __init__(
             self, 
             config: dict,
-            router_loss_weight: float,
-            lr: float
+            router_loss_weight: Optional[float] = None,
+            lr: Optional[float] = None
         ):
         super().__init__()
         self.save_hyperparameters(config)
@@ -545,7 +545,8 @@ class MoEPOTNet(L.LightningModule):
         return grid
 
     ### in/out: B, X, Y, T, C
-    def forward(self, x) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(self, batch: CollatedBatch) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        x = batch.input
         B, _, _, T, _ = x.shape # [8,128,128,10,1]
         if self.normalize:
             mu, sigma = x.mean(dim=(1,2,3),keepdim=True), x.std(dim=(1,2,3),keepdim=True) + 1e-6    # B,1,1,1,C
@@ -631,7 +632,7 @@ class MoEPOTNet(L.LightningModule):
     def training_step(self, batch: CollatedBatch, batch_idx: int):
         cls_indices_target, cls_one_hot_target = self._cls_label(batch)
         
-        pred, cls_pred, router_loss_total = self.forward(batch.input)
+        pred, cls_pred, router_loss_total = self.forward(batch)
         data_loss = self.data_loss(pred, batch.target)
         cls_loss = self.cls_loss(cls_pred, cls_indices_target)
         loss = data_loss + cls_loss + router_loss_total * self.router_loss_weight
@@ -656,7 +657,7 @@ class MoEPOTNet(L.LightningModule):
     def validation_step(self, batch: CollatedBatch, batch_idx: int):
         cls_indices_target, cls_one_hot_target = self._cls_label(batch)
         
-        pred, cls_pred, router_loss_total = self.forward(batch.input)
+        pred, cls_pred, router_loss_total = self.forward(batch)
         data_loss = self.data_loss(pred, batch.target)
         cls_loss = self.cls_loss(cls_pred, cls_indices_target)
         loss = data_loss + cls_loss + router_loss_total * self.router_loss_weight
@@ -687,8 +688,8 @@ def main(cfg: DictConfig) -> None:
         filenames=cfg.data_cfg.train_paths,
         input_fields=cfg.data_cfg.input_fields,
         output_fields=cfg.data_cfg.output_fields,
-        history_time_window=cfg.model_cfg.in_timesteps,
-        future_time_window=cfg.model_cfg.out_timesteps,
+        history_time_window=cfg.model_cfg.params.in_timesteps,
+        future_time_window=cfg.model_cfg.params.out_timesteps,
         time_step=cfg.data_cfg.time_step,
         start_time=cfg.data_cfg.start_time,
         normalizer=None,
@@ -699,8 +700,8 @@ def main(cfg: DictConfig) -> None:
         filenames=cfg.data_cfg.val_paths,
         input_fields=cfg.data_cfg.input_fields,
         output_fields=cfg.data_cfg.output_fields,
-        history_time_window=cfg.model_cfg.in_timesteps,
-        future_time_window=cfg.model_cfg.out_timesteps,
+        history_time_window=cfg.model_cfg.params.in_timesteps,
+        future_time_window=cfg.model_cfg.params.out_timesteps,
         time_step=cfg.data_cfg.time_step,
         start_time=cfg.data_cfg.start_time,
         normalizer=None,
@@ -779,9 +780,9 @@ def main(cfg: DictConfig) -> None:
     )
     
     model = MoEPOTNet(
-        OmegaConf.to_container(cfg.model_cfg),
+        OmegaConf.to_container(cfg.model_cfg.params),
         cfg.router_loss_weight,
-        cfg.optim_cfg.lr
+        cfg.optim_cfg.params.lr
     )
     
     total_params = count_model_parameters(model, active=False)

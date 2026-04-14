@@ -1,4 +1,3 @@
-import inspect
 import random
 import time
 from typing import Tuple, Optional, List
@@ -19,22 +18,7 @@ from nucleus.models import get_model
 from nucleus.utils.lr_schedulers import CosineWarmupLR, TrapezoidalLR
 #from nucleus.utils.plot_utils import wandb_sdf_plotter, wandb_temp_plotter, wandb_vel_plotter
 from nucleus.layers.moe.topk_moe import TopkRouterWithBias
-import nucleus.layers.moe.nucleus1_topk_moe as _n1_moe
 from nucleus.utils.physical_metrics import eikonal, liquid_divergence
-from nucleus.utils.losses import L1RelativeLoss
-
-
-def _moe_router_output(moe_output):
-    """Normalize nucleus1 and standard MoE outputs to a common interface."""
-    if isinstance(moe_output, _n1_moe.TopkMoEOutput):
-        return moe_output  # fields are directly on the output
-    return moe_output.router_output  # standard topk_moe wraps in router_output
-
-
-def _moe_router_type(moe_output):
-    if isinstance(moe_output, _n1_moe.TopkMoEOutput):
-        return "loss"  # nucleus1 always uses load balance loss
-    return moe_output.router_output.router_type()
 
 
 class ForecastModule(L.LightningModule):
@@ -75,20 +59,13 @@ class ForecastModule(L.LightningModule):
         self.log_wandb = log_wandb
 
         self.criterion = torch.nn.L1Loss()
-        #self.criterion = L1RelativeLoss()
 
-        self.load_balance_loss_weight = self.model_cfg["params"].get("load_balance_loss_weight")
-        self.z_loss_weight = self.model_cfg["params"].get("z_loss_weight")
+        self.load_balance_loss_weight = self.model_cfg["params"].pop("load_balance_loss_weight", None)
+        self.z_loss_weight = self.model_cfg["params"].pop("z_loss_weight", None)
 
         self.model_cfg["params"]["input_fields"] = len(self.data_cfg["input_fields"])
         self.model_cfg["params"]["output_fields"] = len(self.data_cfg["output_fields"])
-        # Only strip params that the model constructor doesn't accept
-        from nucleus.models._api import MODELS
-        model_cls = MODELS[self.model_cfg["name"].lower()]
-        model_sig = inspect.signature(model_cls.__init__).parameters
-        for key in ("load_balance_loss_weight", "z_loss_weight"):
-            if key not in model_sig:
-                self.model_cfg["params"].pop(key, None)
+        
         self.model = get_model(self.model_cfg["name"], **self.model_cfg["params"])
         if self.checkpoint_path is not None:
             model_data = torch.load(self.checkpoint_path, weights_only=False)
@@ -166,9 +143,7 @@ class ForecastModule(L.LightningModule):
         loss = self.criterion(pred, tgt)
         if batch_idx == 0:
             self.validation_sample = (inp.detach(), tgt.detach(), pred.detach())
-
         self.default_log_dict({"val/loss": loss})
-
         return loss
 
     def configure_optimizers(self):
@@ -197,15 +172,14 @@ class ForecastModule(L.LightningModule):
             scheduler = [{
                     "scheduler": CosineWarmupLR(
                         optimizer[idx],
-                        warmup_iters=scheduler_params["warmup_iters"],
+                        warmup_iters=scheduler_params["warmup"],
                         max_iters=self.t_max,
                         eta_min=scheduler_params["eta_min"],
                         last_epoch=self.trainer.global_step - 1
                     ),
                     "interval": "step",
                     "frequency": 1
-                } for idx in range(len(optimizer))
-            ]
+                } for idx in range(len(optimizer))]
         elif scheduler_name == "trapezoidal":
             # warmup and cooldown are percentages if floats. Otherwise, total steps.
             warmup = scheduler_params["warmup"]
@@ -307,29 +281,69 @@ class ConditionedForecastModule(ForecastModule):
             log_wandb=log_wandb,
             normalization_constants=normalization_constants
         )
+        
+    def on_before_optimizer_step(self, optimizer):
+        grad_norm = torch.nn.utils.clip_grad_norm_(
+            self.model.parameters(),
+            max_norm=float("inf"),  # not clipping. Only used to get grad norm.
+        )
+        self.log("train/grad_norm", grad_norm, on_step=True, on_epoch=False)
+
+    def transfer_batch_to_device(self, batch: CollatedBatch, device: torch.device, dataloader_idx: int):
+        r"""
+        Since our batch is in a dataclass, pytorch and lightning cannot figure out how to pin memory and
+        asynchrously transfer the batch to the device. So, we do this manually.
+        """
+        batch.fluid_params_tensor = batch.get_fluid_params_tensor('cpu')
+        pinned_batch = batch.pin_memory()
+        return pinned_batch.to(device, non_blocking=True)
+
+    def get_noise_scale(self):
+        # During learning rate warmup, no noise is added.
+        if self.global_step < self.scheduler_cfg["params"]["warmup"]:
+            return 0.0
+        max_noise_scale = 1.0
+        # ramp up noise scale in first half of training.
+        if self.global_step < self.t_max // 2:
+            max_scale_at_step = max_noise_scale * (self.global_step / (self.t_max // 2))
+            return random.uniform(0, max_scale_at_step)
+        else:
+            return random.uniform(0, max_noise_scale)
 
     def training_step(
         self,
         batch: Tuple[Tuple[torch.Tensor, torch.Tensor], torch.Tensor],
         batch_idx: int
-    ) -> torch.Tensor:
-        batch = batch.normalize(self.normalizer)
-        if random.random() < 0.5:
-            batch = batch.fliplr()
-        if random.random() < 0.8:
-            sdf_scale = random.choice(torch.linspace(0.001, 1, 500).tolist())
-            temp_scale = random.choice(torch.linspace(0.001, 5, 500).tolist())
-            vel_scale = random.choice(torch.linspace(0.001, 0.3, 500).tolist())
-            batch = batch.gaussian_noise(sdf_scale, temp_scale, vel_scale)
-
+    ) -> torch.Tensor:    
+        with torch.no_grad():
+            batch.noise_(self.get_noise_scale())
+            
         inp = batch.get_input()
+        torch.compiler.cudagraph_mark_step_begin()
         pred = self.model(inp)
-        bulk_temp, _ = batch.get_temps()
-        loss = self.criterion(pred, batch.target, bulk_temp)
+        loss = self.criterion(pred, batch.target)
+        
+        with torch.no_grad():
+            mae_loss = torch.nn.functional.l1_loss(pred.detach(), batch.target.detach())
+            mse_loss = torch.nn.functional.mse_loss(pred.detach(), batch.target.detach())
+            absmax_error = (pred.detach() - batch.target.detach()).abs().max()
+            eikonal_error = (1 - eikonal(pred[..., 0].detach(), batch.dx[0].item(), batch.dy[0].item())).abs().mean()
+            liquid_divergence_value = liquid_divergence(
+                pred[..., 2].detach(), 
+                pred[..., 3].detach(), 
+                pred[..., 0].detach(),
+                batch.dx[0].item(), 
+                batch.dy[0].item()
+            ).mean()
 
         self.default_log_dict({
-            "train_loss": loss,
-            "learning_rate": self.get_current_lr()
+            "train/loss": loss,
+            "train/learning_rate": self.get_current_lr(),
+            "train/mae_loss": mae_loss,
+            "train/mse_loss": mse_loss,
+            "train/absmax_error": absmax_error,
+            "train/eikonal_loss": eikonal_error,
+            "train/liquid_divergence": liquid_divergence_value,
         })
 
         return loss
@@ -339,16 +353,35 @@ class ConditionedForecastModule(ForecastModule):
         batch: CollatedBatch,
         batch_idx: int
     ) -> torch.Tensor:
-        batch = batch.normalize(self.normalizer)
+            
         inp = batch.get_input()
+        torch.compiler.cudagraph_mark_step_begin()
         pred = self.model(inp)
-        bulk_temp, _ = batch.get_temps()
-        loss = self.criterion(pred, batch.target, bulk_temp)
-        if batch_idx == 0:
-            self.validation_sample = (batch.input.detach(), batch.target.detach(), pred.detach())
+        loss = self.criterion(pred, batch.target)
+        
+        with torch.no_grad():
+            mae_loss = torch.nn.functional.l1_loss(pred.detach(), batch.target.detach())
+            mse_loss = torch.nn.functional.mse_loss(pred.detach(), batch.target.detach())
+            absmax_error = (pred.detach() - batch.target.detach()).abs().max()
+            eikonal_error = (1 - eikonal(pred[..., 0].detach(), batch.dx[0].item(), batch.dy[0].item())).abs().mean()
+            liquid_divergence_value = liquid_divergence(
+                pred[..., 2].detach(), 
+                pred[..., 3].detach(), 
+                pred[..., 0].detach(),
+                batch.dx[0].item(), 
+                batch.dy[0].item()
+            ).mean()
 
-        self.default_log_dict({"val_loss": loss})
-
+        self.default_log_dict({
+            "val/loss": loss,
+            "val/learning_rate": self.get_current_lr(),
+            "val/mae_loss": mae_loss,
+            "val/mse_loss": mse_loss,
+            "val/absmax_error": absmax_error,
+            "val/eikonal_loss": eikonal_error,
+            "val/liquid_divergence": liquid_divergence_value,
+        })
+        
         return loss
 
 class MoEConditionedForecastModule(ConditionedForecastModule):
@@ -374,15 +407,14 @@ class MoEConditionedForecastModule(ConditionedForecastModule):
 
     def moe_metrics(self, moe_outputs, log_dict: dict, prefix: str) -> dict:
         for moe_idx, moe_output in enumerate(moe_outputs):
-            router = _moe_router_output(moe_output)
-            tpe = router.tokens_per_expert.float()
+            tpe = moe_output.router_output.tokens_per_expert.float()
 
             # check the mean router logit
-            mean_router_logit = router.router_logits.mean()
+            mean_router_logit = moe_output.router_output.router_logits.mean()
             log_dict[f"{prefix}_moe/mean_router_logit_layer{moe_idx}"] = mean_router_logit.item()
 
             # check the max router logit
-            max_router_logit = router.router_logits.abs().max()
+            max_router_logit = moe_output.router_output.router_logits.abs().max()
             log_dict[f"{prefix}_moe/max_router_logit_layer{moe_idx}"] = max_router_logit.item()
 
             # perfect balance is 0, while 1 is imbalanced.
@@ -402,36 +434,6 @@ class MoEConditionedForecastModule(ConditionedForecastModule):
             log_dict[f"{prefix}_moe/active_experts_layer{moe_idx}"] = active.item()
         return log_dict
 
-    def on_before_optimizer_step(self, optimizer):
-        grad_norm = torch.nn.utils.clip_grad_norm_(
-            self.model.parameters(),
-            max_norm=float("inf"),  # not clipping. Only used to get grad norm.
-        )
-        self.log("train/grad_norm", grad_norm, on_step=True, on_epoch=False)
-
-    def transfer_batch_to_device(self, batch: CollatedBatch, device: torch.device, dataloader_idx: int):
-        r"""
-        Since our batch is in a dataclass, pytorch and lightning cannot figure out how to pin memory and
-        asynchrously transfer the batch to the device. So, we do this manually.
-        """
-        batch.fluid_params_tensor = batch.get_fluid_params_tensor('cpu')
-        pinned_batch = batch.pin_memory()
-        return pinned_batch.to(device, non_blocking=True)
-
-    def get_noise_scale(self):
-        # During learning rate warmup, no noise is added.
-        params = self.scheduler_cfg["params"]
-        warmup_steps = params.get("warmup_iters", params.get("warmup", 0))
-        if self.global_step < warmup_steps:
-            return 0.0
-        max_noise_scale = 1.0
-        # ramp up noise scale in first half of training.
-        if self.global_step < self.t_max // 2:
-            max_scale_at_step = max_noise_scale * (self.global_step / (self.t_max // 2))
-            return random.uniform(0, max_scale_at_step)
-        else:
-            return random.uniform(0, max_noise_scale)
-
     def training_step(
         self,
         batch: CollatedBatch,
@@ -445,30 +447,24 @@ class MoEConditionedForecastModule(ConditionedForecastModule):
         torch.compiler.cudagraph_mark_step_begin()
         pred, moe_outputs = self.model(inp)
 
-        if isinstance(self.criterion, L1RelativeLoss):
-            bulk_temp, _ = batch.get_temps()
-            data_loss = self.criterion(pred, batch.target, bulk_temp)
-        else:
-            data_loss = self.criterion(pred, batch.target)
+        data_loss = self.criterion(pred, batch.target)
 
         # use router loss to do load balancing.
-        router_with_loss = _moe_router_type(moe_outputs[0]) in ("loss", "bias")
+        router_with_loss = moe_outputs[0].router_output.router_type() in ("loss", "bias")
         if router_with_loss:
-            router_load_balance_loss = sum(_moe_router_output(moe_output).load_balance_loss for moe_output in moe_outputs)
-            loss = data_loss + (router_load_balance_loss * self.load_balance_loss_weight)
-            if self.z_loss_weight is not None:
-                router_z_loss = sum(_moe_router_output(moe_output).z_loss for moe_output in moe_outputs)
-                loss = loss + (router_z_loss * self.z_loss_weight)
+            router_load_balance_loss = sum(moe_output.router_output.load_balance_loss for moe_output in moe_outputs)
+            router_z_loss = sum(moe_output.router_output.z_loss for moe_output in moe_outputs)
+            loss = data_loss + (router_load_balance_loss * self.load_balance_loss_weight) + (router_z_loss * self.z_loss_weight)
         else:
             loss = data_loss
 
         # using router bias to update the router.
-        router_with_bias = _moe_router_type(moe_outputs[0]) == "bias"
+        router_with_bias = moe_outputs[0].router_output.router_type() == "bias"
         if router_with_bias:
             router_idx = 0
             for module in self.modules():
                 if isinstance(module, TopkRouterWithBias):
-                    module.update_router_bias(_moe_router_output(moe_outputs[router_idx]).tokens_per_expert)
+                    module.update_router_bias(moe_outputs[router_idx].router_output.tokens_per_expert)
                     router_idx += 1
 
         if not self.automatic_optimization:
@@ -497,8 +493,14 @@ class MoEConditionedForecastModule(ConditionedForecastModule):
             mae_loss = torch.nn.functional.l1_loss(pred.detach(), batch.target.detach())
             mse_loss = torch.nn.functional.mse_loss(pred.detach(), batch.target.detach())
             absmax_error = (pred.detach() - batch.target.detach()).abs().max()
-            eikonal_error = abs(1 - eikonal(pred[..., 0].detach(), batch.dx[0].item(), batch.dy[0].item())).mean()
-            liquid_divergence_value = liquid_divergence(pred[..., 2].detach(), pred[..., 3].detach(), pred[..., 0].detach(), batch.dx[0].item(), batch.dy[0].item()).mean()
+            eikonal_error = (1 - eikonal(pred[..., 0].detach(), batch.dx[0].item(), batch.dy[0].item())).abs().mean()
+            liquid_divergence_value = liquid_divergence(
+                pred[..., 2].detach(), 
+                pred[..., 3].detach(), 
+                pred[..., 0].detach(),
+                batch.dx[0].item(), 
+                batch.dy[0].item()
+            ).mean()
 
         log_dict = {
             "train/loss": loss,
@@ -512,9 +514,8 @@ class MoEConditionedForecastModule(ConditionedForecastModule):
             "train/learning_rate": self.get_current_lr(),
         }
         if router_with_loss:
-            log_dict["train_moe/load_balance_loss"] = router_load_balance_loss
-            if self.z_loss_weight is not None:
-                log_dict["train_moe/z_loss"] = router_z_loss
+            log_dict["train_moe/load_balance_loss"] = router_load_balance_loss        
+            log_dict["train_moe/z_loss"] = router_z_loss 
         
         # compute expensive metrics less frequently
         if self.global_step % 100 == 0:
@@ -538,22 +539,45 @@ class MoEConditionedForecastModule(ConditionedForecastModule):
     ) -> torch.Tensor:
         inp = batch.get_input()
         pred, moe_outputs = self.model(inp)
-        if isinstance(self.criterion, L1RelativeLoss):
-            bulk_temp, _ = batch.get_temps()
-            loss = self.criterion(pred, batch.target, bulk_temp)
-        else:
-            loss = self.criterion(pred, batch.target)
+        loss = self.criterion(pred, batch.target)
         if batch_idx == 0:
             self.validation_sample = (batch.input.detach(), batch.target.detach(), pred.detach())
 
-        mse_loss = torch.nn.functional.mse_loss(pred.detach(), batch.target.detach())
+        with torch.no_grad():
+            mae_loss = torch.nn.functional.l1_loss(pred.detach(), batch.target.detach())
+            mse_loss = torch.nn.functional.mse_loss(pred.detach(), batch.target.detach())
+            absmax_error = (pred.detach() - batch.target.detach()).abs().max()
+            eikonal_error = (1 - eikonal(pred[..., 0].detach(), batch.dx[0].item(), batch.dy[0].item())).abs().mean()
+            liquid_divergence_value = liquid_divergence(
+                pred[..., 2].detach(), 
+                pred[..., 3].detach(), 
+                pred[..., 0].detach(),
+                batch.dx[0].item(), 
+                batch.dy[0].item()
+            ).mean()
 
         log_dict = {
             "val/loss": loss,
+            "val/mae_loss": mae_loss,
             "val/mse_loss": mse_loss,
-
+            "val/absmax_error": absmax_error,
+            "val/eikonal_loss": eikonal_error,
+            "val/liquid_divergence": liquid_divergence_value,
+            "val/step": self.global_step,
+            "val/learning_rate": self.get_current_lr(),
         }
-        log_dict = self.moe_metrics(moe_outputs, log_dict, "val")
+        
+        # compute expensive metrics less frequently
+        if self.global_step % 100 == 0:
+            with torch.no_grad():
+                log_dict["val/input_mean"] = inp.input.mean().item()
+                log_dict["val/input_std"] = inp.input.std().item()
+                log_dict["val/target_mean"] = batch.target.mean().item()
+                log_dict["val/target_std"] = batch.target.std().item()
+                log_dict["val/pred_mean"] = pred.mean().item()
+                log_dict["val/pred_std"] = pred.std().item()
+                log_dict = self.moe_metrics(moe_outputs, log_dict, "val")
+
         self.default_log_dict(log_dict)
 
         return loss
