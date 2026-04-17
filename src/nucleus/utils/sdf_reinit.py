@@ -29,7 +29,7 @@ def verify_sdf(sdf, dx, dy=None):
     grad_magnitude = torch.sqrt(grad_x**2 + grad_y**2)
     return grad_magnitude.mean(dim=(-2, -1)), grad_magnitude.std(dim=(-2, -1))
 
-def sdf_reinit_fast_marching(sdf_init, dx, scale_factor=8, far_threshold=4.0):
+def sdf_reinit_fast_marching(sdf_init, dx, scale_factor=1, far_threshold=4.0):
     assert sdf_init.device == torch.device("cpu"), "SDF must be on CPU for fast marching reinitialization"
     return _sdf_reinit_cpp.sdf_reinit(sdf_init, dx, scale_factor, far_threshold)
 
@@ -38,7 +38,8 @@ def sdf_reinit_sussman(
     dx: float,
     dy: float = None,
     n_iter: int = 5,
-    dtau: float = None
+    dtau: float = None,
+    near_threshold: float = -1.0
 ) -> torch.Tensor:
     """
     Convention: sdf > 0 = vapor, sdf < 0 = liquid.
@@ -53,7 +54,7 @@ def sdf_reinit_sussman(
     """
     
     if dy   is None: dy = dx
-    if dtau is None: dtau = 0.3 * min(dx, dy)
+    if dtau is None: dtau = 0.5 * min(dx, dy)
     eps = 1e-6
 
     dsdf_dx = _ddx(sdf0, dx)
@@ -62,14 +63,15 @@ def sdf_reinit_sussman(
     S = sdf0 / torch.sqrt(sdf0**2 + (grad_mag0 * dx)**2 + eps)
     S = S.detach() # smoothed sdf is frozen across iterations and not backpropped through
 
-    sdf = sdf0
+    sdf = sdf0.clone()
     for _ in range(n_iter):
         sdf_prev = sdf.clone()
         grad_mag = godunov_grad_mag(sdf, S, dx, dy, eps)
         sdf = sdf - dtau * S * (grad_mag - 1.0)
-        # Early stopping if sdf is not changing much
-        if torch.abs(sdf - sdf_prev).max() < 1e-6:
-            break
+
+        # only update away from interface
+        near_mask = sdf0 > near_threshold
+        sdf[near_mask] = sdf0[near_mask]
 
     return sdf
 
