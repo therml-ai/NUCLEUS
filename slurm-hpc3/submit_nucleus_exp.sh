@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -A amowli_lab_gpu
 #SBATCH -p free-gpu
-#SBATCH --job-name=train-bubbleformer
+#SBATCH --job-name=train-nucleus-exp
 #SBATCH -o slurm-%x-%j.out
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=12
@@ -21,6 +21,7 @@ uv pip install -e .
 uv pip install natten==0.21.5+torch2100cu128 -f https://whl.natten.org
 
 python scripts/train.py \
-    model_cfg=bubbleformer_film_vit_big \
-    data_cfg=poolboiling64 \
-    normalizer_cfg=no \
+    model_cfg=neighbor_moe/neighbor_moe_exp \
+    data_cfg=poolboiling \
+    normalizer_cfg=standard \
+    model_cfg.params.patch_size=16 \
