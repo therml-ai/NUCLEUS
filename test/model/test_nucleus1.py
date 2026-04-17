@@ -31,7 +31,6 @@ def test_nucleus1_moe(device, model_name):
         num_fluid_params=16,
         num_experts=4,
         topk=2,
-        load_balance_loss_weight=0.001,
     )
     model = model.to(device)
     

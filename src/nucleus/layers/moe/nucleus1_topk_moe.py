@@ -76,14 +76,12 @@ class TopkMoE(nn.Module):
         hidden_dim: int,
         intermediate_dim: int,
         topk: int,
-        load_balance_loss_weight: float
     ):
         super().__init__()
         self.num_experts = num_experts
         self.hidden_dim = hidden_dim
         self.intermediate_dim = intermediate_dim
         self.topk = topk
-        self.load_balance_loss_weight = load_balance_loss_weight
         
         self.w1 = nn.Parameter(torch.empty(num_experts, hidden_dim, intermediate_dim, dtype=torch.bfloat16))
         self.w2 = nn.Parameter(torch.empty(num_experts, intermediate_dim, hidden_dim, dtype=torch.bfloat16))
@@ -131,7 +129,7 @@ class TopkMoE(nn.Module):
         # reduce the output tokens and scale by the routing probability
         out = (scattered * topk_probs.unsqueeze(-1)).sum(dim=1).view(input_shape)
         
-        loss = load_balance_loss(router_logits, tokens_per_expert, self.topk, self.num_experts) * self.load_balance_loss_weight
+        loss = load_balance_loss(router_logits, tokens_per_expert, self.topk, self.num_experts)
         
         return TopkMoEOutput(
             out=out, 

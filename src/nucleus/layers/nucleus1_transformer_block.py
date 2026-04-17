@@ -52,7 +52,6 @@ class Nucleus1TransformerMoEBlock(Nucleus1TransformerBlock):
         num_heads: int,
         num_experts: int,
         topk: int,
-        load_balance_loss_weight: float,
         mlp_ratio: float = 4.0,
     ):
         super().__init__(embed_dim, num_heads, mlp_ratio=mlp_ratio)
@@ -62,7 +61,6 @@ class Nucleus1TransformerMoEBlock(Nucleus1TransformerBlock):
             hidden_dim=embed_dim,
             intermediate_dim=int(embed_dim * mlp_ratio),
             topk=topk,
-            load_balance_loss_weight=load_balance_loss_weight,
         )
         
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -106,10 +104,9 @@ class Nucleus1TransformerNeighborMoEBlock(Nucleus1TransformerMoEBlock):
         num_heads: int,
         num_experts: int,
         topk: int,
-        load_balance_loss_weight: float,
         mlp_ratio: float = 4.0,
     ):
-        super().__init__(embed_dim, num_heads, num_experts, topk, load_balance_loss_weight, mlp_ratio=mlp_ratio)
+        super().__init__(embed_dim, num_heads, num_experts, topk, mlp_ratio=mlp_ratio)
         self.attention = Nucleus1SpaceTimeNeighborAttention(
             embed_dim=embed_dim,
             num_heads=num_heads,
@@ -135,10 +132,9 @@ class Nucleus1TransformerAxialMoEBlock(Nucleus1TransformerMoEBlock):
         num_heads: int,
         num_experts: int,
         topk: int,
-        load_balance_loss_weight: float,
         mlp_ratio: float = 4.0,
     ):
-        super().__init__(embed_dim, num_heads, num_experts, topk, load_balance_loss_weight, mlp_ratio=mlp_ratio)
+        super().__init__(embed_dim, num_heads, num_experts, topk, mlp_ratio=mlp_ratio)
         self.attention = Nucleus1SpaceTimeAxialAttention(
             embed_dim=embed_dim,
             num_heads=num_heads,
