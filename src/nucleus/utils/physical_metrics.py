@@ -33,6 +33,8 @@ class PhysicalMetrics:
     heatflux: torch.Tensor # (B, T)
     heatflux_at_heater: torch.Tensor # (B, T)
 
+    liquid_divergence: torch.Tensor # (B, T)
+
     mean_liquid_temperature: torch.Tensor # (B, T)
     liquid_temperature_at_heater: torch.Tensor # (B, T, W)
 
@@ -73,6 +75,7 @@ def physical_metrics(
         eikonal=eikonal(sdf, dx, dy),
         heatflux=None,
         heatflux_at_heater=None,
+        liquid_divergence=liquid_divergence(velx, vely, sdf, dx, dy),
         mean_liquid_temperature=liquid_temperature(temperature, sdf),
         liquid_temperature_at_heater=liquid_temperature_at_heater(temperature, sdf, heater_min, heater_max, xcoords),
         vapor_volume=vapor_volume(sdf, dx, dy),
@@ -134,7 +137,7 @@ def divergence(velx, vely, dx, dy):
 def liquid_divergence(velx, vely, sdf, dx, dy):
     # Along bubble interfaces, the divergence is known to be non-zero.
     # This checks points sufficiently far from liquid-vapor interfaces.
-    EPSILON = 0.05
+    EPSILON = -1
     (velx_grad_x,) = torch.gradient(velx, spacing=dx, dim=-1)
     (vely_grad_y,) = torch.gradient(vely, spacing=dy, dim=-2)
     velx_liquid_grad_x = velx_grad_x * (sdf < EPSILON)
