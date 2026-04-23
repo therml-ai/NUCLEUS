@@ -137,7 +137,7 @@ def plot_routing_heatmap(
     
 if __name__ == "__main__":
     
-    root_dir = pathlib.Path("/pub/afeeney/bubbleformer_logs/neighbor_moe_poolboiling64_48037580/checkpoints/inference_rollouts")
+    root_dir = pathlib.Path("/pub/tanishs4/bubbleformer_logs/neighbor_moe_poolboiling64_48037580/checkpoints/inference_rollouts")
     test_results = torch.load(root_dir / "test_results.pt", weights_only=False)
 
     for test_result in test_results:

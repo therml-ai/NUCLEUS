@@ -30,8 +30,8 @@ def plot_sdf_reinit(sat_pred, sub_pred, sat_pred_with_reinit, sub_pred_with_rein
     plt.close()
 
 if __name__ == "__main__":
-    preds = torch.load("/pub/afeeney/bubbleformer_logs/neighbor_moe_poolboiling64_48025794/checkpoints/inference_rollouts/test_results.pt", weights_only=False)
-    preds_with_reinit = torch.load("/pub/afeeney/bubbleformer_logs/neighbor_moe_poolboiling64_48025794/checkpoints/inference_rollouts/test_results_reinit.pt", weights_only=False)
+    preds = torch.load("/pub/tanishs4/bubbleformer_logs/neighbor_moe_poolboiling64_48025794/checkpoints/inference_rollouts/test_results.pt", weights_only=False)
+    preds_with_reinit = torch.load("/pub/tanishs4/bubbleformer_logs/neighbor_moe_poolboiling64_48025794/checkpoints/inference_rollouts/test_results_reinit.pt", weights_only=False)
     
     sat_pred = preds[0]
     sub_pred = preds[1]

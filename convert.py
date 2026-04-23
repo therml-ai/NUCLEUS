@@ -6,7 +6,7 @@ import pathlib
 model = "neighbor_vit_poolboiling64"
 job_id = "48103654"
 
-rollout_dir = f"/pub/afeeney/bubbleformer_logs/{model}_{job_id}/checkpoints/inference_rollouts/"
+rollout_dir = f"/pub/tanishs4/bubbleformer_logs/{model}_{job_id}/checkpoints/inference_rollouts/"
 rollout_dir = pathlib.Path(rollout_dir)
 
 for rollout_path in rollout_dir.glob("**/*/"):

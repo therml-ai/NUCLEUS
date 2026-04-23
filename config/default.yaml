@@ -1,4 +1,4 @@
-log_dir: /pub/afeeney/bubbleformer_logs
+log_dir: /pub/tanishs4/bubbleformer_logs
 seed: 42
 
 nodes: 1

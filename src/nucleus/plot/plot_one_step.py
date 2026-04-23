@@ -15,14 +15,14 @@ def filter_sat(test_results):
 
 def latex():
     checkpoints = {
-        "Neighbor MoE": "/pub/afeeney/bubbleformer_logs/neighbor_moe_poolboiling64_48105352/checkpoints/inference_rollouts/test_one_step.pt",
-        "Neighbor MLP": "/pub/afeeney/bubbleformer_logs/neighbor_vit_poolboiling64_48103654/checkpoints/inference_rollouts/test_one_step.pt",
-        "Axial MoE": "/pub/afeeney/bubbleformer_logs/axial_moe_poolboiling64_48103671/checkpoints/inference_rollouts/test_one_step.pt",
-        "Axial MLP": "/pub/afeeney/bubbleformer_logs/axial_vit_poolboiling64_48103668/checkpoints/inference_rollouts/test_one_step.pt",
-        "Global MoE": "/pub/afeeney/bubbleformer_logs/vit_moe_poolboiling64_48103688/checkpoints/inference_rollouts/test_one_step.pt",
-        "Global MLP": "/pub/afeeney/bubbleformer_logs/vit_poolboiling64_48103690/checkpoints/inference_rollouts/test_one_step.pt",
-        "BubbleFormer 1": "/pub/afeeney/bubbleformer_logs/bubbleformer_film_vit_poolboiling64_48105033/checkpoints/inference_rollouts/test_one_step.pt",
-        "BubbleFormer 2": "/pub/afeeney/bubbleformer_logs/bubbleformer_film_vit_poolboiling64_48105034/checkpoints/inference_rollouts/test_one_step.pt",
+        "Neighbor MoE": "/pub/tanishs4/bubbleformer_logs/neighbor_moe_poolboiling64_48105352/checkpoints/inference_rollouts/test_one_step.pt",
+        "Neighbor MLP": "/pub/tanishs4/bubbleformer_logs/neighbor_vit_poolboiling64_48103654/checkpoints/inference_rollouts/test_one_step.pt",
+        "Axial MoE": "/pub/tanishs4/bubbleformer_logs/axial_moe_poolboiling64_48103671/checkpoints/inference_rollouts/test_one_step.pt",
+        "Axial MLP": "/pub/tanishs4/bubbleformer_logs/axial_vit_poolboiling64_48103668/checkpoints/inference_rollouts/test_one_step.pt",
+        "Global MoE": "/pub/tanishs4/bubbleformer_logs/vit_moe_poolboiling64_48103688/checkpoints/inference_rollouts/test_one_step.pt",
+        "Global MLP": "/pub/tanishs4/bubbleformer_logs/vit_poolboiling64_48103690/checkpoints/inference_rollouts/test_one_step.pt",
+        "BubbleFormer 1": "/pub/tanishs4/bubbleformer_logs/bubbleformer_film_vit_poolboiling64_48105033/checkpoints/inference_rollouts/test_one_step.pt",
+        "BubbleFormer 2": "/pub/tanishs4/bubbleformer_logs/bubbleformer_film_vit_poolboiling64_48105034/checkpoints/inference_rollouts/test_one_step.pt",
     }
 
     print(r"\begin{table}")

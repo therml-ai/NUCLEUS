@@ -63,12 +63,12 @@ def plot_vel_dist(ax, preds, targets):
     
 def temp_figs():
     checkpoints = {
-        "Neighbor MoE": "/pub/afeeney/bubbleformer_logs/neighbor_moe_poolboiling64_48105352/checkpoints/inference_rollouts/test_results.pt",
-        "Neighbor MLP": "/pub/afeeney/bubbleformer_logs/neighbor_vit_poolboiling64_48103654/checkpoints/inference_rollouts/test_results.pt",
-        #"Axial MoE": "/pub/afeeney/bubbleformer_logs/axial_moe_poolboiling64_48103671/checkpoints/inference_rollouts/test_results_clip_boiling_point.pt",
-        #"Axial MLP": "/pub/afeeney/bubbleformer_logs/axial_vit_poolboiling64_48103668/checkpoints/inference_rollouts/test_results_clip_boiling_point.pt",
-        #"Global MoE": "/pub/afeeney/bubbleformer_logs/vit_moe_poolboiling64_48103688/checkpoints/inference_rollouts/test_results_clip_boiling_point.pt",
-        #"Global MLP": "/pub/afeeney/bubbleformer_logs/vit_poolboiling64_48103690/checkpoints/inference_rollouts/test_results_clip_boiling_point.pt",
+        "Neighbor MoE": "/pub/tanishs4/bubbleformer_logs/neighbor_moe_poolboiling64_48105352/checkpoints/inference_rollouts/test_results.pt",
+        "Neighbor MLP": "/pub/tanishs4/bubbleformer_logs/neighbor_vit_poolboiling64_48103654/checkpoints/inference_rollouts/test_results.pt",
+        #"Axial MoE": "/pub/tanishs4/bubbleformer_logs/axial_moe_poolboiling64_48103671/checkpoints/inference_rollouts/test_results_clip_boiling_point.pt",
+        #"Axial MLP": "/pub/tanishs4/bubbleformer_logs/axial_vit_poolboiling64_48103668/checkpoints/inference_rollouts/test_results_clip_boiling_point.pt",
+        #"Global MoE": "/pub/tanishs4/bubbleformer_logs/vit_moe_poolboiling64_48103688/checkpoints/inference_rollouts/test_results_clip_boiling_point.pt",
+        #"Global MLP": "/pub/tanishs4/bubbleformer_logs/vit_poolboiling64_48103690/checkpoints/inference_rollouts/test_results_clip_boiling_point.pt",
     }
 
     fig, ax = plt.subplots(2 * len(checkpoints), 6, figsize=(10, 5), layout="constrained")

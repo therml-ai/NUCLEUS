@@ -4,7 +4,7 @@ from nucleus.plot.plotting import plot_sdf, plot_temp, plot_vel_mag
 from scipy.stats import wasserstein_distance
 
 op250_results = torch.load(
-    "/pub/afeeney/bubbleformer_logs/neighbor_moe_poolboiling64_op250_48123677/checkpoints/inference_rollouts/test_results_clip_boiling_point.pt",
+    "/pub/tanishs4/bubbleformer_logs/neighbor_moe_poolboiling64_op250_48123677/checkpoints/inference_rollouts/test_results_clip_boiling_point.pt",
     weights_only=False
 )
 
