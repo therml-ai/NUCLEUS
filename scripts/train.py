@@ -27,6 +27,9 @@ from nucleus.modules import get_train_module
 from nucleus.utils.set_fp32_precision import set_fp32_precision
 from nucleus.utils.parameter_count import count_model_parameters
 
+with open('/config/wandb_api_key.txt') as key:
+    wandb.login(key.read())
+
 def get_git_sha(directory: Path) -> Optional[str]:
     print(directory)
     # Base case: if we reach the root directory, there's no .git directory.
