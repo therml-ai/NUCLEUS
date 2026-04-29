@@ -34,7 +34,6 @@ dependencies = [
     "rotary-embedding-torch",
     "imgcat",
     "pytest",
-    "natten>=0.21.6",
 ]
 
 [project.optional-dependencies]
