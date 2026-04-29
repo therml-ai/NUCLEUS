@@ -1029,7 +1029,7 @@ class ScOTEncoder(nn.Module):
             ]
         )
 
-        self.gradient_checkpointing = False
+        self.gradient_checkpointing = True #CHANGE BACK to false
 
     def forward(
         self,
@@ -1166,7 +1166,7 @@ class ScOTDecoder(nn.Module):
             ]
         )
 
-        self.gradient_checkpointing = False
+        self.gradient_checkpointing = True #CHANGE BACK to false
 
     def forward(
         self,
