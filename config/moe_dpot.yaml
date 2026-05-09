@@ -32,4 +32,4 @@ defaults:
   - model_cfg: moe_dpot
   - data_cfg: poolboiling64
   - scheduler_cfg: cosine_warmup
-  - normalizer_cfg: no
+  - normalizer_cfg: "no" #NOTE: All yaml no must be strings, or evaluates as false

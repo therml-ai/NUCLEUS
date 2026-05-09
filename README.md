@@ -54,3 +54,5 @@ model checkpoint that you want to evaluate and 2. the corresponding `model_cfg` 
 ```bash
 python scripts/inf.py --checkpoint_path=/path/to/model --model_cfg=config_for_checkpoint
 ```
+moe_dpot_poolboiling64_2026-04-29_51545990
+srun uv run python scripts/inf.py checkpoint_path=/pub/tanishs4/bubbleformer_lo>

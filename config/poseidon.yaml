@@ -31,4 +31,4 @@ defaults:
   - model_cfg: poseidon_big
   - data_cfg: poolboiling64
   - scheduler_cfg: cosine_warmup
-  - normalizer_cfg: no
+  - normalizer_cfg: "no"
