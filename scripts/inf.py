@@ -43,8 +43,8 @@ def main(cfg: DictConfig):
         model_kwargs["num_experts"] = cfg.model_cfg.params.num_experts
         model_kwargs["topk"] = cfg.model_cfg.params.topk
     
-    if "load_balance_loss_weight" in cfg.model_cfg.params:
-        model_kwargs["load_balance_loss_weight"] = cfg.model_cfg.params.load_balance_loss_weight
+    model_kwargs.pop("load_balance_loss_weight", None)
+    model_kwargs.pop("z_loss_weight", None)
         
     model = get_model(model_name, **model_kwargs)
     model = model.to(device)
