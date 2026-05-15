@@ -8,7 +8,7 @@ version = "0.0.0"
 description = ""
 authors = [
     { name="Arthur Feeney", email="afeeney@uci.edu" },
-    { name="Sheikh Md Shakeel Hassan", email="sheikhh1@umd.edu" },
+    { name="Sheikh Md Shakeel Hassan", email="sheikhh1@uci.edu" },
     { name="Xianwei Zou", email="xianwz2@uci.edu" },
 ]
 requires-python = ">=3.12"
