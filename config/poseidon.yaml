@@ -28,7 +28,7 @@ optim_cfg:
 
 defaults:
   - _self_
-  - model_cfg: poseidon_big
+  - model_cfg: baseline/poseidon_big
   - data_cfg: poolboiling64
   - scheduler_cfg: cosine_warmup
   - normalizer_cfg: "no"

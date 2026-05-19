@@ -29,7 +29,7 @@ optim_cfg:
 
 defaults:
   - _self_
-  - model_cfg: moe_dpot
+  - model_cfg: baseline/moe_dpot
   - data_cfg: poolboiling64
   - scheduler_cfg: cosine_warmup
   - normalizer_cfg: "no"
