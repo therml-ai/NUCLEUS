@@ -1,4 +1,4 @@
-log_dir: /pub/afeeney/bubbleformer_logs
+log_dir: ${oc.env:TMPDIR}
 seed: 42
 
 nodes: 1
