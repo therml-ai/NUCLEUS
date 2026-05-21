@@ -18,11 +18,6 @@ start_time: 100
 checkpoint_path:
 commit_sha:
 
-use_wandb: False
-wandb_tags:
-  - time-window-5
-  - poolboiling
-  - AdamW-optimizer
 defaults:
   - _self_
   - data_cfg: poolboiling64
