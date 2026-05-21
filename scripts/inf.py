@@ -1,6 +1,5 @@
 import os
 import pathlib
-from numpy import true_divide
 import torch
 from collections import OrderedDict
 from nucleus.models import get_model
