@@ -1,4 +1,7 @@
-log_dir: /pub/afeeney/bubbleformer_logs
+log_dir:
+checkpoint_path:
+commit_sha:
+
 seed: 42
 
 nodes: 1
@@ -15,18 +18,10 @@ future_time_window: 8
 time_step: 1
 start_time: 100
 
-checkpoint_path:
-commit_sha:
-
-use_wandb: False
-wandb_tags:
-  - time-window-5
-  - poolboiling
-  - AdamW-optimizer
 defaults:
   - _self_
   - data_cfg: poolboiling64
-  - model_cfg: neighbor_moe/neighbor_moe_exp
+  - model_cfg: nucleus2/nucleus2_experiment
   - optim_cfg: adamw
   - scheduler_cfg: cosine_warmup
   - normalizer_cfg: standard
