@@ -22,8 +22,6 @@ dependencies = [
     "einops",
     "opencv-python",
     "matplotlib",
-    "lightning",
-    "wandb",
     "black",
     "lion-pytorch",
     "rich",
