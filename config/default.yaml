@@ -21,7 +21,7 @@ start_time: 100
 defaults:
   - _self_
   - data_cfg: poolboiling64
-  - model_cfg: neighbor_moe/neighbor_moe_exp
+  - model_cfg: nucleus2/nucleus2_experiment
   - optim_cfg: adamw
   - scheduler_cfg: cosine_warmup
   - normalizer_cfg: standard
