@@ -62,6 +62,13 @@ class ForecastDataset(Dataset):
                 fluid_params = json.load(f)
             self.fluid_params.append(fluid_params)
 
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state['data'] = None
+        state.pop('num_trajs', None)
+        state.pop('traj_lens', None)
+        return state
+
     def _get_traj_len(self, traj_len: int) -> int:
         return traj_len - self.start_time - self.future_time_window - self.history_time_window + 1
 

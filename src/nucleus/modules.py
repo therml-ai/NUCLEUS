@@ -1,3 +1,4 @@
+import math
 import random
 import time
 from typing import Tuple, Optional, List
@@ -12,7 +13,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 import matplotlib.pyplot as plt
 import lightning as L
 
-from nucleus.data.batching import CollatedBatch
+from nucleus.data.batching import CollatedBatch, PushforwardCollatedBatch
 from nucleus.data.normalize import get_normalizer
 from nucleus.models import get_model
 from nucleus.utils.lr_schedulers import CosineWarmupLR, TrapezoidalLR
@@ -34,6 +35,8 @@ class ForecastModule(L.LightningModule):
         normalization_constants (Tuple[List, List]):
                     Difference and Division constants for normalization
     """
+    dataset_cls_name = "standard"
+    collate_fn_name = "collate"
     def __init__(
         self,
         checkpoint_path: Optional[str],
@@ -60,8 +63,12 @@ class ForecastModule(L.LightningModule):
 
         self.criterion = torch.nn.L1Loss()
 
-        self.load_balance_loss_weight = self.model_cfg["params"].pop("load_balance_loss_weight", None)
-        self.z_loss_weight = self.model_cfg["params"].pop("z_loss_weight", None)
+        self.load_balance_loss_weight = self.model_cfg["params"].pop("load_balance_loss_weight", 0.0)
+        self.z_loss_weight = self.model_cfg["params"].pop("z_loss_weight", 0.0)
+        self.pushforward_prob = self.model_cfg["params"].pop("pushforward_prob", 0.0)
+        self.pushforward_start_step = self.model_cfg["params"].pop("pushforward_start_step", 0)
+        self.pushforward_decay_rate = self.model_cfg["params"].pop("pushforward_decay_rate", 0.0)
+        self.num_windows = self.model_cfg["params"].pop("num_windows", 3)
 
         self.model_cfg["params"]["input_fields"] = len(self.data_cfg["input_fields"])
         self.model_cfg["params"]["output_fields"] = len(self.data_cfg["output_fields"])
@@ -302,7 +309,7 @@ class ConditionedForecastModule(ForecastModule):
         # During learning rate warmup, no noise is added.
         if self.global_step < self.scheduler_cfg["params"]["warmup"]:
             return 0.0
-        max_noise_scale = 1.0
+        max_noise_scale = self.scheduler_cfg["params"].get("max_noise_scale", 1.0)
         # ramp up noise scale in first half of training.
         if self.global_step < self.t_max // 2:
             max_scale_at_step = max_noise_scale * (self.global_step / (self.t_max // 2))
@@ -407,14 +414,19 @@ class MoEConditionedForecastModule(ConditionedForecastModule):
 
     def moe_metrics(self, moe_outputs, log_dict: dict, prefix: str) -> dict:
         for moe_idx, moe_output in enumerate(moe_outputs):
-            tpe = moe_output.router_output.tokens_per_expert.float()
+            if hasattr(moe_output, 'router_output'):
+                tpe = moe_output.router_output.tokens_per_expert.float()
+                mean_router_logit = moe_output.router_output.router_logits.mean()
+                max_router_logit = moe_output.router_output.router_logits.abs().max()
+            else:
+                tpe = moe_output.tokens_per_expert.float()
+                mean_router_logit = moe_output.router_logits.mean()
+                max_router_logit = moe_output.router_logits.abs().max()
 
             # check the mean router logit
-            mean_router_logit = moe_output.router_output.router_logits.mean()
             log_dict[f"{prefix}_moe/mean_router_logit_layer{moe_idx}"] = mean_router_logit.item()
 
             # check the max router logit
-            max_router_logit = moe_output.router_output.router_logits.abs().max()
             log_dict[f"{prefix}_moe/max_router_logit_layer{moe_idx}"] = max_router_logit.item()
 
             # perfect balance is 0, while 1 is imbalanced.
@@ -450,22 +462,27 @@ class MoEConditionedForecastModule(ConditionedForecastModule):
         data_loss = self.criterion(pred, batch.target)
 
         # use router loss to do load balancing.
-        router_with_loss = moe_outputs[0].router_output.router_type() in ("loss", "bias")
-        if router_with_loss:
-            router_load_balance_loss = sum(moe_output.router_output.load_balance_loss for moe_output in moe_outputs)
-            router_z_loss = sum(moe_output.router_output.z_loss for moe_output in moe_outputs)
-            loss = data_loss + (router_load_balance_loss * self.load_balance_loss_weight) + (router_z_loss * self.z_loss_weight)
-        else:
-            loss = data_loss
+        if hasattr(moe_outputs[0], 'router_output'):
+            router_with_loss = moe_outputs[0].router_output.router_type() in ("loss", "bias")
+            if router_with_loss:
+                router_load_balance_loss = sum(moe_output.router_output.load_balance_loss for moe_output in moe_outputs)
+                router_z_loss = sum(moe_output.router_output.z_loss for moe_output in moe_outputs)
+                loss = data_loss + (router_load_balance_loss * self.load_balance_loss_weight) + (router_z_loss * self.z_loss_weight)
+            else:
+                loss = data_loss
 
-        # using router bias to update the router.
-        router_with_bias = moe_outputs[0].router_output.router_type() == "bias"
-        if router_with_bias:
-            router_idx = 0
-            for module in self.modules():
-                if isinstance(module, TopkRouterWithBias):
-                    module.update_router_bias(moe_outputs[router_idx].router_output.tokens_per_expert)
-                    router_idx += 1
+            # using router bias to update the router.
+            router_with_bias = moe_outputs[0].router_output.router_type() == "bias"
+            if router_with_bias:
+                router_idx = 0
+                for module in self.modules():
+                    if isinstance(module, TopkRouterWithBias):
+                        module.update_router_bias(moe_outputs[router_idx].router_output.tokens_per_expert)
+                        router_idx += 1
+        else:
+            # nucleus1-style flat MoE output: fields are directly on the output object
+            router_load_balance_loss = sum(moe_output.load_balance_loss for moe_output in moe_outputs)
+            loss = data_loss + (router_load_balance_loss * self.load_balance_loss_weight)
 
         if not self.automatic_optimization:
             # MANUAL OPTIMIZATION IF USING MULTIPLE OPTIMIZERS
@@ -475,7 +492,8 @@ class MoEConditionedForecastModule(ConditionedForecastModule):
             for opt in optimizers:
                 opt.zero_grad()
             self.manual_backward(loss)
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+            clip_val = self.optimizer_cfg.get("gradient_clip_val", 0) or float("inf")
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), clip_val)
             for opt in optimizers:
                 opt.step()
             # global_step is incremented by the number of optimizers.
@@ -513,9 +531,9 @@ class MoEConditionedForecastModule(ConditionedForecastModule):
             "train/step": self.global_step,
             "train/learning_rate": self.get_current_lr(),
         }
-        if router_with_loss:
-            log_dict["train_moe/load_balance_loss"] = router_load_balance_loss        
-            log_dict["train_moe/z_loss"] = router_z_loss 
+        if hasattr(moe_outputs[0], 'router_output') and router_with_loss:
+            log_dict["train_moe/load_balance_loss"] = router_load_balance_loss
+            log_dict["train_moe/z_loss"] = router_z_loss
         
         # compute expensive metrics less frequently
         if self.global_step % 100 == 0:
@@ -582,6 +600,190 @@ class MoEConditionedForecastModule(ConditionedForecastModule):
 
         return loss
 
+class PushforwardMoEConditionedForecastModule(MoEConditionedForecastModule):
+    """
+    Pushforward (scheduled-sampling) training for MoE models.
+
+    Each training step performs two model forward passes:
+      1. model(x_prev) -> u_tilde  [no_grad, detached]
+      2. model(u_tilde) -> pred    [backprop through this pass only]
+    Loss is computed against y_next (ground truth after x_curr).
+    Validation uses teacher-forced x_curr -> y_next for fair comparison.
+    """
+    dataset_cls_name = "pushforward"
+    collate_fn_name = "pushforward_collate"
+
+    def training_step(self, batch: PushforwardCollatedBatch, batch_idx: int) -> torch.Tensor:
+        batch.noise_(self.get_noise_scale())
+
+        windows = batch.windows   # [x_0, ..., x_{N-2}, y]
+        y = windows[-1]
+        N = len(windows)
+
+        torch.compiler.cudagraph_mark_step_begin()
+
+        # 50% teacher-forced: L = criterion(model(x_{N-2}), y)
+        # 50% scheduled sampling: L = sum_d lambda_d * criterion(model^(d+1)(x_{N-2-d}), y)
+        #   where lambda_d = exp(-pushforward_decay_rate * d) decays with rollout depth.
+        #   Each term starts from the correct window so the final prediction always targets y.
+        use_pushforward = self.global_step >= self.pushforward_start_step and random.random() < self.pushforward_prob
+
+        if use_pushforward:
+            data_loss = None
+            all_moe_outputs = []
+            moe_tf = None
+            for d in range(N - 1):
+                # depth d: windows[N-2-d] -> d no_grad steps -> final grad step -> y
+                lam = math.exp(-self.pushforward_decay_rate * d)
+                u = windows[N - 2 - d]
+                for _ in range(d):
+                    torch.compiler.cudagraph_mark_step_begin()
+                    with torch.no_grad():
+                        u, _ = self.model(batch.make_inp(u))
+                    u = u.detach()
+                torch.compiler.cudagraph_mark_step_begin()
+                pred_d, moe_d = self.model(batch.make_inp(u, y))
+                term = lam * self.criterion(pred_d, y)
+                data_loss = term if data_loss is None else data_loss + term
+                all_moe_outputs.extend(moe_d)
+                if d == 0:
+                    pred, inp, moe_tf = pred_d, batch.make_inp(windows[-2], y), moe_d
+        else:
+            inp = batch.val_inp().get_input()
+            pred, moe_tf = self.model(inp)
+            data_loss = self.criterion(pred, y)
+            all_moe_outputs = moe_tf
+
+        if hasattr(all_moe_outputs[0], 'router_output'):
+            router_with_loss = all_moe_outputs[0].router_output.router_type() in ("loss", "bias")
+            if router_with_loss:
+                router_load_balance_loss = sum(moe_output.router_output.load_balance_loss for moe_output in all_moe_outputs)
+                router_z_loss = sum(moe_output.router_output.z_loss for moe_output in all_moe_outputs)
+                loss = data_loss + (router_load_balance_loss * self.load_balance_loss_weight) + (router_z_loss * self.z_loss_weight)
+            else:
+                loss = data_loss
+
+            router_with_bias = all_moe_outputs[0].router_output.router_type() == "bias"
+            if router_with_bias:
+                router_idx = 0
+                for module in self.modules():
+                    if isinstance(module, TopkRouterWithBias):
+                        module.update_router_bias(moe_tf[router_idx].router_output.tokens_per_expert)
+                        router_idx += 1
+        else:
+            router_load_balance_loss = sum(moe_output.load_balance_loss for moe_output in all_moe_outputs)
+            loss = data_loss + (router_load_balance_loss * self.load_balance_loss_weight)
+
+        if not self.automatic_optimization:
+            optimizers = self.optimizers()
+            if not isinstance(optimizers, list):
+                optimizers = [optimizers]
+            for opt in optimizers:
+                opt.zero_grad()
+            self.manual_backward(loss)
+            clip_val = self.optimizer_cfg.get("gradient_clip_val", 0) or float("inf")
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), clip_val)
+            for opt in optimizers:
+                opt.step()
+            self.global_step -= len(optimizers) - 1
+
+            schedulers = self.lr_schedulers()
+            if not isinstance(schedulers, list):
+                schedulers = [schedulers]
+            for scheduler in schedulers:
+                scheduler.step()
+
+        with torch.no_grad():
+            mae_loss = torch.nn.functional.l1_loss(pred.detach(), y.detach())
+            mse_loss = torch.nn.functional.mse_loss(pred.detach(), y.detach())
+            absmax_error = (pred.detach() - y.detach()).abs().max()
+            eikonal_error = (1 - eikonal(pred[..., 0].detach(), batch.dx[0].item(), batch.dy[0].item())).abs().mean()
+            liquid_divergence_value = liquid_divergence(
+                pred[..., 2].detach(),
+                pred[..., 3].detach(),
+                pred[..., 0].detach(),
+                batch.dx[0].item(),
+                batch.dy[0].item()
+            ).mean()
+
+        log_dict = {
+            "train/loss": loss,
+            "train/data_loss": data_loss,
+            "train/mae_loss": mae_loss,
+            "train/mse_loss": mse_loss,
+            "train/absmax_error": absmax_error,
+            "train/eikonal_loss": eikonal_error,
+            "train/liquid_divergence": liquid_divergence_value,
+            "train/step": self.global_step,
+            "train/learning_rate": self.get_current_lr(),
+            "train/pushforward_active": float(use_pushforward),
+        }
+
+        if hasattr(all_moe_outputs[0], 'router_output') and router_with_loss:
+            log_dict["train_moe/load_balance_loss"] = router_load_balance_loss
+            log_dict["train_moe/z_loss"] = router_z_loss
+
+        if self.global_step % 100 == 0:
+            with torch.no_grad():
+                log_dict["train/input_mean"] = inp.input.mean().item()
+                log_dict["train/input_std"] = inp.input.std().item()
+                log_dict["train/target_mean"] = y.mean().item()
+                log_dict["train/target_std"] = y.std().item()
+                log_dict["train/pred_mean"] = pred.mean().item()
+                log_dict["train/pred_std"] = pred.std().item()
+                log_dict = self.moe_metrics(moe_tf, log_dict, "train")
+
+        self.default_log_dict(log_dict)
+        return loss
+
+    def validation_step(self, batch: PushforwardCollatedBatch, batch_idx: int) -> torch.Tensor:
+        # Teacher-forced evaluation: x_curr -> y_next (comparable to baseline metrics)
+        val_batch = batch.val_inp()
+        inp = val_batch.get_input()
+        pred, moe_outputs = self.model(inp)
+        loss = self.criterion(pred, batch.y_next)
+
+        if batch_idx == 0:
+            self.validation_sample = (batch.x_curr.detach(), batch.y_next.detach(), pred.detach())
+
+        with torch.no_grad():
+            mae_loss = torch.nn.functional.l1_loss(pred.detach(), batch.y_next.detach())
+            mse_loss = torch.nn.functional.mse_loss(pred.detach(), batch.y_next.detach())
+            absmax_error = (pred.detach() - batch.y_next.detach()).abs().max()
+            eikonal_error = (1 - eikonal(pred[..., 0].detach(), batch.dx[0].item(), batch.dy[0].item())).abs().mean()
+            liquid_divergence_value = liquid_divergence(
+                pred[..., 2].detach(),
+                pred[..., 3].detach(),
+                pred[..., 0].detach(),
+                batch.dx[0].item(),
+                batch.dy[0].item()
+            ).mean()
+
+        log_dict = {
+            "val/loss": loss,
+            "val/mae_loss": mae_loss,
+            "val/mse_loss": mse_loss,
+            "val/absmax_error": absmax_error,
+            "val/eikonal_loss": eikonal_error,
+            "val/liquid_divergence": liquid_divergence_value,
+            "val/step": self.global_step,
+            "val/learning_rate": self.get_current_lr(),
+        }
+
+        if self.global_step % 100 == 0:
+            with torch.no_grad():
+                log_dict["val/input_mean"] = inp.input.mean().item()
+                log_dict["val/input_std"] = inp.input.std().item()
+                log_dict["val/target_mean"] = batch.y_next.mean().item()
+                log_dict["val/target_std"] = batch.y_next.std().item()
+                log_dict["val/pred_mean"] = pred.mean().item()
+                log_dict["val/pred_std"] = pred.std().item()
+                log_dict = self.moe_metrics(moe_outputs, log_dict, "val")
+
+        self.default_log_dict(log_dict)
+        return loss
+
+
 def get_train_module(module_name: str):
     if module_name == "forecast":
         return ForecastModule
@@ -589,5 +791,7 @@ def get_train_module(module_name: str):
         return ConditionedForecastModule
     elif module_name == "moe_conditioned_forecast":
         return MoEConditionedForecastModule
+    elif module_name == "pushforward_moe_conditioned_forecast":
+        return PushforwardMoEConditionedForecastModule
     else:
         raise ValueError(f"Module {module_name} not supported")

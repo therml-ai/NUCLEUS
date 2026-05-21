@@ -90,7 +90,7 @@ class CollatedBatch:
         return CollatedBatch(
             # B T H W C, flip along the width (dim)
             input=torch.flip(self.input, dims=[3]),
-            target=torch.flip(self.input, dims=[3]),
+            target=torch.flip(self.target, dims=[3]),
             fluid_params_dict=self.fluid_params_dict,
             x_grid=self.x_grid,
             y_grid=self.y_grid,
@@ -189,10 +189,136 @@ def make_data(input, target, fluid_params_dict, downsample_factor: int, rollout_
         fluid_params_tensor=get_fluid_params_tensor(fluid_params_dict)
     )
 
-def collate(data: List[Data]):    
+def collate(data: List[Data]):
     return CollatedBatch(
         input=torch.stack([d.input for d in data]),
         target=torch.stack([d.target for d in data]),
+        fluid_params_dict=[d.fluid_params_dict for d in data],
+        x_grid=torch.stack([d.x_grid for d in data]),
+        y_grid=torch.stack([d.y_grid for d in data]),
+        dx=torch.tensor([d.dx for d in data]),
+        dy=torch.tensor([d.dy for d in data]),
+        fluid_params_tensor=torch.stack([d.fluid_params_tensor for d in data]),
+    )
+
+
+@dataclasses.dataclass
+class PushforwardData:
+    # windows[0..N-2] are ground-truth inputs; windows[-1] is the target y.
+    windows: List[torch.Tensor]
+    fluid_params_dict: Dict
+    x_grid: torch.Tensor
+    y_grid: torch.Tensor
+    dx: float
+    dy: float
+    fluid_params_tensor: Optional[torch.Tensor] = None
+
+
+@dataclasses.dataclass
+class PushforwardCollatedBatch:
+    # windows[0..N-2] are ground-truth inputs; windows[-1] is the target y.
+    windows: List[torch.Tensor]
+    fluid_params_dict: List[Dict]
+    x_grid: torch.Tensor
+    y_grid: torch.Tensor
+    dx: torch.Tensor
+    dy: torch.Tensor
+    fluid_params_tensor: Optional[torch.Tensor] = None
+
+    # Convenience aliases used by validation logging.
+    @property
+    def x_curr(self) -> torch.Tensor:
+        return self.windows[-2]
+
+    @property
+    def y_next(self) -> torch.Tensor:
+        return self.windows[-1]
+
+    def pin_memory(self):
+        return PushforwardCollatedBatch(
+            windows=[w.pin_memory() for w in self.windows],
+            fluid_params_dict=self.fluid_params_dict,
+            x_grid=self.x_grid.pin_memory(),
+            y_grid=self.y_grid.pin_memory(),
+            dx=self.dx.pin_memory(),
+            dy=self.dy.pin_memory(),
+            fluid_params_tensor=self.fluid_params_tensor.pin_memory() if self.fluid_params_tensor is not None else None,
+        )
+
+    def to(self, device: torch.device, non_blocking: bool = False):
+        return PushforwardCollatedBatch(
+            windows=[w.to(device, non_blocking=non_blocking) for w in self.windows],
+            fluid_params_dict=self.fluid_params_dict,
+            x_grid=self.x_grid.to(device, non_blocking=non_blocking),
+            y_grid=self.y_grid.to(device, non_blocking=non_blocking),
+            dx=self.dx.to(device, non_blocking=non_blocking),
+            dy=self.dy.to(device, non_blocking=non_blocking),
+            fluid_params_tensor=self.fluid_params_tensor.to(device, non_blocking=non_blocking) if self.fluid_params_tensor is not None else None,
+        )
+
+    def make_inp(self, input_tensor: torch.Tensor, target: Optional[torch.Tensor] = None) -> CollatedBatch:
+        """Build a CollatedBatch from an arbitrary input tensor (and optional target)."""
+        return CollatedBatch(
+            input=input_tensor,
+            target=target,
+            fluid_params_dict=self.fluid_params_dict,
+            x_grid=self.x_grid,
+            y_grid=self.y_grid,
+            dx=self.dx,
+            dy=self.dy,
+            fluid_params_tensor=self.fluid_params_tensor,
+        )
+
+    def val_inp(self) -> CollatedBatch:
+        """Teacher-forced input: windows[-2] → windows[-1]."""
+        return self.make_inp(self.windows[-2], self.windows[-1])
+
+    def noise_(self, scale: float):
+        if scale <= 0:
+            return
+        with torch.no_grad():
+            # Corrupt all input windows; leave the target (windows[-1]) clean.
+            for i in range(len(self.windows) - 1):
+                self.windows[i] = self.windows[i] + torch.randn_like(self.windows[i]) * scale
+
+    def get_fluid_params_tensor(self, device):
+        return torch.tensor(
+            [get_fluid_params(d) for d in self.fluid_params_dict],
+            dtype=torch.float32,
+            device=device
+        )
+
+
+def make_pushforward_data(
+    windows: List[torch.Tensor],
+    fluid_params_dict: Dict,
+    downsample_factor: int,
+) -> PushforwardData:
+    dx = (fluid_params_dict["x_max"] - fluid_params_dict["x_min"]) / (fluid_params_dict["num_blocks_x"] * int(fluid_params_dict["nx_block"]))
+    dy = (fluid_params_dict["y_max"] - fluid_params_dict["y_min"]) / (fluid_params_dict["num_blocks_y"] * int(fluid_params_dict["ny_block"]))
+
+    if downsample_factor > 1:
+        dx *= downsample_factor
+        dy *= downsample_factor
+
+    x_grid = torch.arange(fluid_params_dict["x_min"], fluid_params_dict["x_max"], dx) + dx / 2
+    y_grid = torch.arange(fluid_params_dict["y_min"], fluid_params_dict["y_max"], dy) + dy / 2
+
+    return PushforwardData(
+        windows=windows,
+        fluid_params_dict=fluid_params_dict,
+        x_grid=x_grid,
+        y_grid=y_grid,
+        dx=dx,
+        dy=dy,
+        fluid_params_tensor=get_fluid_params_tensor(fluid_params_dict),
+    )
+
+
+def pushforward_collate(data: List[PushforwardData]) -> PushforwardCollatedBatch:
+    N = len(data[0].windows)
+    return PushforwardCollatedBatch(
+        windows=[torch.stack([d.windows[i] for d in data]) for i in range(N)],
         fluid_params_dict=[d.fluid_params_dict for d in data],
         x_grid=torch.stack([d.x_grid for d in data]),
         y_grid=torch.stack([d.y_grid for d in data]),
