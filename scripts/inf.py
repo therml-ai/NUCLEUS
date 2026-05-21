@@ -19,6 +19,7 @@ from nucleus.plot.plot_metrics import (
     plot_bubble_counts,
 )
 from nucleus.utils.set_fp32_precision import set_fp32_precision
+from lightning import LightningModule
 
 @hydra.main(version_base=None, config_path="../config", config_name="default")
 def main(cfg: DictConfig):
@@ -50,7 +51,11 @@ def main(cfg: DictConfig):
         
     weight_state_dict = OrderedDict()
     for key, val in model_data["state_dict"].items():
-        name = key[6:]
+        print(key, val.shape)
+        if isinstance(model, LightningModule):
+            name = key
+        else:
+            name = key[6:]
         weight_state_dict[name] = val
     del model_data
     model.load_state_dict(weight_state_dict)
