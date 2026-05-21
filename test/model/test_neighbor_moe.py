@@ -2,15 +2,15 @@ import torch
 import pytest
 
 from nucleus.models import get_model
-from nucleus.testing.parametrize import parametrize_available_devices
 from nucleus.data.batching import CollatedBatch
 
 _MOE_MODELS = [
     "neighbor_moe",
 ]
 
-@parametrize_available_devices("device")
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="model requires cuda")
 @pytest.mark.parametrize("model_name", _MOE_MODELS)
+@pytest.mark.parametrize("device", ["cuda"])
 def test_neighbor_moe(device, model_name):
     model = get_model(
         model_name,

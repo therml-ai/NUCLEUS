@@ -2,7 +2,6 @@ import torch
 import pytest
 
 from nucleus.models import get_model
-from nucleus.testing.parametrize import parametrize_available_devices
 from nucleus.data.batching import CollatedBatch
 
 _MOE_MODELS = [
@@ -17,8 +16,9 @@ _VIT_MODELS = [
     "nucleus1_neighbor_vit",
 ]
 
-@parametrize_available_devices("device")
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="model requires cuda")
 @pytest.mark.parametrize("model_name", _MOE_MODELS)
+@pytest.mark.parametrize("device", ["cuda"])
 def test_nucleus1_moe(device, model_name):
     
     model = get_model(model_name,
@@ -56,8 +56,9 @@ def test_nucleus1_moe(device, model_name):
         if param.grad is not None:
             assert torch.all(torch.isfinite(param.grad))
             
-@parametrize_available_devices("device")
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="model requires cuda")
 @pytest.mark.parametrize("model_name", _VIT_MODELS)
+@pytest.mark.parametrize("device", ["cuda"])
 def test_nucleus1_vit(device, model_name):
     
     model = get_model(model_name,
