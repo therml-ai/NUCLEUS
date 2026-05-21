@@ -4,8 +4,8 @@ import os
 def test_default_log_dir():
     with initialize(version_base=None, config_path="../../config"):
         cfg = compose(config_name="default")
-        assert cfg.log_dir == os.environ["TMPDIR"]
-        
+        assert cfg.log_dir is None
+
 def test_default_empty_fields():
     with initialize(version_base=None, config_path="../../config"):
         cfg = compose(config_name="default")
