@@ -1,5 +1,5 @@
-log_dir: /pub/srachaba/bubbleformer_logs
-checkpoint_path: /share/crsp/lab/amowli/share/nucleus-ckpt-sid/neighbor_moe_exp_may13.ckpt
+log_dir:
+checkpoint_path:
 commit_sha:
 
 seed: 42
@@ -7,7 +7,7 @@ seed: 42
 nodes: 1
 devices: 1
 
-max_epochs: 1000
+max_epochs:
 max_steps: 100000
 val_check_interval: 100
 batch_size: 16
@@ -20,8 +20,8 @@ start_time: 100
 
 defaults:
   - _self_
-  - data_cfg: poolboiling64_gravity
-  - model_cfg: nucleus2/nucleus2_pushforward
+  - data_cfg: poolboiling64
+  - model_cfg: nucleus2/nucleus2_experiment
   - optim_cfg: adamw
   - scheduler_cfg: cosine_warmup
-  - normalizer_cfg: gravity_std
+  - normalizer_cfg: standard
