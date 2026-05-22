@@ -7,6 +7,7 @@ from nucleus.data import ForecastDataset, InMemForecastDataset
 from nucleus.data.layout import convert_layout
 from nucleus.layers.moe.topk_moe import TopkMoEOutput
 from nucleus.utils.physical_metrics import PhysicalMetrics, BubbleMetrics, physical_metrics, bubble_metrics
+from nucleus.utils.sdf_reinit import sdf_reinit_sussman
 from nucleus.baseline.poseidon import ScOTOutput
 from nucleus.baseline.moe_dpot import MoEPOTNet
 
@@ -87,7 +88,7 @@ def run_test(cfg, model, normalizer, test_file_path: str, max_timesteps: int):
         future_time_window=cfg.future_time_window,
         history_time_window=cfg.history_time_window,
         time_step=1,
-        start_time=400,
+        start_time=cfg.start_time,
         normalizer=normalizer,
         augment=False,
         layout=cfg.model_cfg.layout
@@ -114,7 +115,7 @@ def run_test(cfg, model, normalizer, test_file_path: str, max_timesteps: int):
             
             if len(preds) > 0:
                 batch.input = preds[-1].unsqueeze(0).to(batch.input.device)
-                batch.input = normalizer.normalize(batch.input, bulk_temp)
+                batch.input = normalizer.normalize(batch.input, bulk_temp, layout=cfg.model_cfg.layout)
             tgt = batch.target
 
             torch.compiler.cudagraph_mark_step_begin()
@@ -122,6 +123,12 @@ def run_test(cfg, model, normalizer, test_file_path: str, max_timesteps: int):
             if isinstance(output, tuple):
                 if isinstance(model, MoEPOTNet):
                     output, _, _ = output
+                    if isinstance(output, ScOTOutput):
+                        pred = output.output.unsqueeze(1) # [B, 1, C, H, W]
+                        moe_output = []
+                    else:
+                        pred = output
+                        moe_output = []
                 else:
                     pred, moe_output = output
             elif isinstance(output, ScOTOutput):
@@ -135,8 +142,8 @@ def run_test(cfg, model, normalizer, test_file_path: str, max_timesteps: int):
                 # NOTE: only tracking moe outputs for every layer. Must move to CPU to avoid mem overflow.
                 moe_outputs.append([m.detach().to('cpu') for m in moe_output])
             
-            pred = normalizer.unnormalize(pred, bulk_temp)
-            tgt = normalizer.unnormalize(tgt, bulk_temp)
+            pred = normalizer.unnormalize(pred, bulk_temp, layout=cfg.model_cfg.layout)
+            tgt = normalizer.unnormalize(tgt, bulk_temp, layout=cfg.model_cfg.layout)
 
             pred = pred.to(torch.float32).squeeze(0).detach().cpu()
             tgt = tgt.to(torch.float32).squeeze(0).detach().cpu()
@@ -148,7 +155,9 @@ def run_test(cfg, model, normalizer, test_file_path: str, max_timesteps: int):
                 break
 
             # Reinitialize the SDF at each timestep
-            #pred[:, 0] = sdf_reinit_fast_marching(pred[:, 0], dx=1 / 4, far_threshold=4)
+            #pred[..., 0] = sdf_reinit_fast_marching(pred[..., 0], dx=1 / 4, far_threshold=4)
+            for t in range(pred.shape[0]):
+                pred[t, ..., 0] = sdf_reinit_sussman(pred[t, ..., 0], dx=1 / 4)
 
             preds.append(pred)
             targets.append(tgt)

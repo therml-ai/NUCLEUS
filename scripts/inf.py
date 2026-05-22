@@ -8,9 +8,10 @@ from omegaconf import DictConfig, OmegaConf
 from nucleus.data.normalize import get_normalizer
 from nucleus.test import run_test, TestResults
 from nucleus.plot.plotting import (
-    plot_rollout, 
-    plot_rollout_stability, 
+    plot_rollout,
+    plot_rollout_stability,
     plot_rollout_moe_overlay,
+    plot_distribution,
 )
 from nucleus.plot.plot_metrics import (
     plot_simple_metrics,
@@ -63,20 +64,26 @@ def main(cfg: DictConfig):
     normalizer = get_normalizer(OmegaConf.to_container(cfg.normalizer_cfg, resolve=True))
     
     # Rollouts are saved in the directory containing the checkpoint
-    save_root = pathlib.Path(cfg.checkpoint_path).parent / "inference_rollouts"
+    save_root = pathlib.Path(cfg.checkpoint_path).parent / "rollouts"
     save_root.mkdir(parents=True, exist_ok=True)
     all_test_results = []
     for test_file_path in cfg.data_cfg.test_paths:
-        test_results: TestResults = run_test(cfg, model, normalizer, test_file_path, max_timesteps=300)
+        test_results: TestResults = run_test(cfg, model, normalizer, test_file_path, max_timesteps=1000)
         all_test_results.append(test_results)
 
         save_dir = save_root / f"{test_results.case_name}"
         save_dir.mkdir(parents=True, exist_ok=True)
         plot_rollout(
-           save_dir=save_dir,
-           rollout=test_results.preds,
-           test_results=test_results,
-           step_size=5,
+            save_dir=save_dir,
+            rollout=test_results.preds,
+            test_results=test_results,
+            step_size=5,
+            include_ground_truth=True,
+        )
+        plot_distribution(
+            save_dir=save_dir,
+            rollout=test_results.preds,
+            test_results=test_results,
         )
         
     torch.save(all_test_results, save_root / "test_results_reinit.pt")

@@ -1,0 +1,19 @@
+name: neighbor_moe
+train_module_name: pushforward_moe_conditioned_forecast
+layout: "t h w c"
+params:
+  input_fields: 4
+  output_fields: 4
+  patch_size: 4
+  embed_dim: 512
+  processor_blocks: 8
+  num_heads: 8
+  num_fluid_params: 16
+  num_experts: 6
+  topk: 2
+  pushforward_prob: 0.5
+  pushforward_decay_rate: 0.7
+  pushforward_start_step: 2500
+  num_windows: 4
+  #load_balance_loss_weight: 1e-5
+  #z_loss_weight: 1e-5
