@@ -607,11 +607,9 @@ class PushforwardMoEConditionedForecastModule(MoEConditionedForecastModule):
     Each training step performs two model forward passes:
       1. model(x_prev) -> u_tilde  [no_grad, detached]
       2. model(u_tilde) -> pred    [backprop through this pass only]
-    Loss is computed against y_next (ground truth after x_curr).
-    Validation uses teacher-forced x_curr -> y_next for fair comparison.
+    Loss is computed against windows[-1] (ground truth target).
+    Validation uses teacher-forced windows[-2] -> windows[-1] for fair comparison.
     """
-    dataset_cls_name = "pushforward"
-    collate_fn_name = "pushforward_collate"
 
     def training_step(self, batch: PushforwardCollatedBatch, batch_idx: int) -> torch.Tensor:
         batch.noise_(self.get_noise_scale())
@@ -737,19 +735,18 @@ class PushforwardMoEConditionedForecastModule(MoEConditionedForecastModule):
         return loss
 
     def validation_step(self, batch: PushforwardCollatedBatch, batch_idx: int) -> torch.Tensor:
-        # Teacher-forced evaluation: x_curr -> y_next (comparable to baseline metrics)
         val_batch = batch.val_inp()
         inp = val_batch.get_input()
         pred, moe_outputs = self.model(inp)
-        loss = self.criterion(pred, batch.y_next)
+        loss = self.criterion(pred, batch.windows[-1])
 
         if batch_idx == 0:
-            self.validation_sample = (batch.x_curr.detach(), batch.y_next.detach(), pred.detach())
+            self.validation_sample = (batch.windows[-2].detach(), batch.windows[-1].detach(), pred.detach())
 
         with torch.no_grad():
-            mae_loss = torch.nn.functional.l1_loss(pred.detach(), batch.y_next.detach())
-            mse_loss = torch.nn.functional.mse_loss(pred.detach(), batch.y_next.detach())
-            absmax_error = (pred.detach() - batch.y_next.detach()).abs().max()
+            mae_loss = torch.nn.functional.l1_loss(pred.detach(), batch.windows[-1].detach())
+            mse_loss = torch.nn.functional.mse_loss(pred.detach(), batch.windows[-1].detach())
+            absmax_error = (pred.detach() - batch.windows[-1].detach()).abs().max()
             eikonal_error = (1 - eikonal(pred[..., 0].detach(), batch.dx[0].item(), batch.dy[0].item())).abs().mean()
             liquid_divergence_value = liquid_divergence(
                 pred[..., 2].detach(),
@@ -774,8 +771,8 @@ class PushforwardMoEConditionedForecastModule(MoEConditionedForecastModule):
             with torch.no_grad():
                 log_dict["val/input_mean"] = inp.input.mean().item()
                 log_dict["val/input_std"] = inp.input.std().item()
-                log_dict["val/target_mean"] = batch.y_next.mean().item()
-                log_dict["val/target_std"] = batch.y_next.std().item()
+                log_dict["val/target_mean"] = batch.windows[-1].mean().item()
+                log_dict["val/target_std"] = batch.windows[-1].std().item()
                 log_dict["val/pred_mean"] = pred.mean().item()
                 log_dict["val/pred_std"] = pred.std().item()
                 log_dict = self.moe_metrics(moe_outputs, log_dict, "val")

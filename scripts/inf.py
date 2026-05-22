@@ -67,7 +67,7 @@ def main(cfg: DictConfig):
     save_root = pathlib.Path(cfg.checkpoint_path).parent / "rollouts"
     save_root.mkdir(parents=True, exist_ok=True)
     all_test_results = []
-    for test_file_path in cfg.data_cfg.test_paths[1:2]:
+    for test_file_path in cfg.data_cfg.test_paths:
         test_results: TestResults = run_test(cfg, model, normalizer, test_file_path, max_timesteps=1000)
         all_test_results.append(test_results)
 

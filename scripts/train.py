@@ -20,9 +20,12 @@ from lightning.pytorch.callbacks import ModelSummary, Callback, ModelCheckpoint,
 from lightning.pytorch.callbacks.progress.rich_progress import RichProgressBarTheme
 from lightning.pytorch.plugins.environments import SLURMEnvironment
 
-from nucleus.data.batching import collate
+from dotenv import load_dotenv
+load_dotenv()
+
+from nucleus.data.batching import collate, pushforward_collate
 from nucleus.data.normalize import get_normalizer
-from nucleus.data import ForecastDataset, InMemForecastDataset
+from nucleus.data import ForecastDataset, InMemForecastDataset, PushforwardForecastDataset
 from nucleus.modules import get_train_module
 from nucleus.utils.set_fp32_precision import set_fp32_precision
 from nucleus.utils.parameter_count import count_model_parameters
@@ -109,35 +112,47 @@ def main(cfg: DictConfig) -> None:
     cfg.commit_sha = commit_sha
 
     logger = WandbLogger(
-        entity="hpcforge",
-        project="bubbleformer",
+        entity=os.environ["WANDB_ENTITY"],
+        project=os.environ["WANDB_PROJECT"],
         name=log_id,
         dir=cfg.log_dir,
         config=OmegaConf.to_container(cfg),
     )
 
-    dataset = InMemForecastDataset if "64" in cfg.data_cfg.dataset else ForecastDataset
-    
     normalizer = get_normalizer(OmegaConf.to_container(cfg.normalizer_cfg, resolve=True))
 
-    train_dataset = dataset(
+    is_pushforward = "pushforward" in cfg.model_cfg.train_module_name
+    if is_pushforward:
+        dataset_cls = PushforwardForecastDataset
+        dataset_kwargs = dict(
+            num_time_windows=cfg.model_cfg.params.num_windows,
+            time_window_size=cfg.history_time_window,
+        )
+        collate_fn = pushforward_collate
+    else:
+        dataset_cls = InMemForecastDataset if "64" in cfg.data_cfg.dataset else ForecastDataset
+        dataset_kwargs = dict(
+            history_time_window=cfg.history_time_window,
+            future_time_window=cfg.future_time_window,
+        )
+        collate_fn = collate
+
+    train_dataset = dataset_cls(
         filenames=cfg.data_cfg.train_paths,
         input_fields=cfg.data_cfg.input_fields,
         output_fields=cfg.data_cfg.output_fields,
-        history_time_window=cfg.history_time_window,
-        future_time_window=cfg.future_time_window,
+        **dataset_kwargs,
         time_step=cfg.time_step,
         start_time=cfg.start_time,
         normalizer=normalizer,
         augment=True,
         layout=cfg.model_cfg.layout
     )
-    val_dataset = dataset(
+    val_dataset = dataset_cls(
         filenames=cfg.data_cfg.val_paths,
         input_fields=cfg.data_cfg.input_fields,
         output_fields=cfg.data_cfg.output_fields,
-        history_time_window=cfg.history_time_window,
-        future_time_window=cfg.future_time_window,
+        **dataset_kwargs,
         time_step=cfg.time_step,
         start_time=cfg.start_time,
         normalizer=normalizer,
@@ -149,21 +164,23 @@ def main(cfg: DictConfig) -> None:
         train_dataset,
         batch_size=cfg.batch_size,
         shuffle=True,
-        num_workers=10,
+        num_workers=4,
         pin_memory=True,
         prefetch_factor=2,
         persistent_workers=True,
-        collate_fn=collate,
+        multiprocessing_context='fork',
+        collate_fn=collate_fn,
     )
     val_dataloader = DataLoader(
         val_dataset,
         batch_size=cfg.batch_size,
         shuffle=False,
-        num_workers=10,
+        num_workers=4,
         pin_memory=True,
         prefetch_factor=2,
         persistent_workers=True,
-        collate_fn=collate,
+        multiprocessing_context='fork',
+        collate_fn=collate_fn,
     )
     
     train_module = get_train_module(cfg.model_cfg.train_module_name)(

@@ -145,8 +145,6 @@ class Normalizer:
     
     def normalize(self, data: torch.Tensor, bulk_temp: torch.Tensor, layout: str = "t h w c") -> torch.Tensor:
         assert data.dim() >= 4, "Data must be at least 4D (..., T, H, W, C)"
-        if layout != "t h w c":
-            data = convert_layout(data, target_layout="t h w c", source_layout=layout)
         assert data.shape[-1] == 4, "Data must have 4 channels (sdf, temp, velx, vely)"
         assert isinstance(bulk_temp, (int, float)) or data.shape[:-4] == bulk_temp.shape, "Bulk temperature must match the batch dimensions of the data"
         result = torch.stack([
@@ -155,8 +153,6 @@ class Normalizer:
             self.normalize_velx(data[..., 2]),
             self.normalize_vely(data[..., 3]),
         ], dim=-1)
-        if layout != "t h w c":
-            result = convert_layout(result, target_layout=layout, source_layout="t h w c")
         return result
 
     def unnormalize(self, data: torch.Tensor, bulk_temp: torch.Tensor, layout: str = "t h w c") -> torch.Tensor:
@@ -296,7 +292,7 @@ def main(cfg: DictConfig):
     fluid_params_min = None
     fluid_params_max = None
     
-    start_time = cfg.start_time
+    start_time = 300
     step_size = 100
     
     # Initial loop to get the limits for the running variances.

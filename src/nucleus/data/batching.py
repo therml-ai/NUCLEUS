@@ -225,15 +225,6 @@ class PushforwardCollatedBatch:
     dy: torch.Tensor
     fluid_params_tensor: Optional[torch.Tensor] = None
 
-    # Convenience aliases used by validation logging.
-    @property
-    def x_curr(self) -> torch.Tensor:
-        return self.windows[-2]
-
-    @property
-    def y_next(self) -> torch.Tensor:
-        return self.windows[-1]
-
     def pin_memory(self):
         return PushforwardCollatedBatch(
             windows=[w.pin_memory() for w in self.windows],
