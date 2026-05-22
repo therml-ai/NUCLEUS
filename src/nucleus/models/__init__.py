@@ -1,4 +1,3 @@
-from .vit import ViT, AxialViT, NeighborViT
 from .moe import NeighborMoE
 from .nucleus1_moe import Nucleus1ViTMoE, Nucleus1AxialMoE, Nucleus1NeighborMoE
 from .nucleus1_vit import Nucleus1ViT, Nucleus1AxialViT, Nucleus1NeighborViT

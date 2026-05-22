@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 
-
 class AdaptiveLayerNorm(nn.Module):
     def __init__(self, embed_dim: int, num_fluid_params: int, eps: float = 1e-6):
         super().__init__()
