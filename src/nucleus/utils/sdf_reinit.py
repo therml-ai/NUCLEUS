@@ -1,12 +1,4 @@
 import torch
-from torch.utils.cpp_extension import load
-
-_sdf_reinit_cpp = load(
-    "sdf_reinit",
-    sources=["csrc/sdf_reinit.cpp"],
-    extra_cflags=["-O3"],
-    verbose=True
-)
 
 def sdf_reinit_drift(
     sdf_before: torch.Tensor,
@@ -29,9 +21,6 @@ def verify_sdf(sdf, dx, dy=None):
     grad_magnitude = torch.sqrt(grad_x**2 + grad_y**2)
     return grad_magnitude.mean(dim=(-2, -1)), grad_magnitude.std(dim=(-2, -1))
 
-def sdf_reinit_fast_marching(sdf_init, dx, scale_factor=1, far_threshold=4.0):
-    assert sdf_init.device == torch.device("cpu"), "SDF must be on CPU for fast marching reinitialization"
-    return _sdf_reinit_cpp.sdf_reinit(sdf_init, dx, scale_factor, far_threshold)
 
 def sdf_reinit_sussman(
     sdf0: torch.Tensor,

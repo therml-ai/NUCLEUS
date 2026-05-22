@@ -1,7 +1,6 @@
 import pytest
 import torch
 from nucleus.utils.sdf_reinit import (
-    sdf_reinit_fast_marching, 
     sdf_reinit_sussman,
     verify_sdf,
     sdf_reinit_drift
@@ -21,17 +20,17 @@ def make_circle_sdf(n=128, extent=8.0, radius=0.7, center=(0.1, -0.05), negate=T
 
 
 @pytest.mark.parametrize("noise_std", [0.05, 0.10])
-def test_fast_marching_reinitializes_noisy_circle(noise_std):
+def test_sussman_reinitializes_noisy_circle(noise_std):
     torch.manual_seed(0)
 
     phi_true, dx = make_circle_sdf()
 
     phi_noisy = phi_true + noise_std * torch.randn_like(phi_true)
-    phi_reinit = sdf_reinit_fast_marching(
+    phi_reinit = sdf_reinit_sussman(
         phi_noisy.cpu(),  # fast marching impl only supports CPU
         dx=dx,
-        scale_factor=8,
-        far_threshold=4.0,
+        n_iter=100,
+        near_threshold=-2.0,
     )
     
     # Check |grad(phi)| stats improved toward 1
