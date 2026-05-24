@@ -22,6 +22,38 @@ from ._api import register_model
 __all__ = ["Nucleus1ViT"]
 
 class Nucleus1ViTBase(nn.Module):
+    expected_fluid_params = [
+        "inv_reynolds",
+        "cpgas",
+        "mugas",
+        "rhogas",
+        "thcogas",
+        "stefan",
+        "prandtl",
+        "gravy",
+        "bulk_temp",
+        "sat_temp"
+    ]
+    expected_heater_params = [
+        "wallTemp",
+        "nucWaitTime",
+        "rcdAngle",
+        "advAngle",
+        "velContact",
+        "xMin",
+        "xMax"
+    ]
+    expected_global_params = [
+        "gravy"
+    ]
+    expected_fields = [
+        "dfun", # sdf
+        "temperature"
+        "velx",
+        "vely"
+    ]
+    layout = "t c h w"
+    
     def __init__(
         self,
         input_fields: int,

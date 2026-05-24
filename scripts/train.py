@@ -20,9 +20,6 @@ from lightning.pytorch.callbacks import ModelSummary, Callback, ModelCheckpoint,
 from lightning.pytorch.callbacks.progress.rich_progress import RichProgressBarTheme
 from lightning.pytorch.plugins.environments import SLURMEnvironment
 
-from dotenv import load_dotenv
-load_dotenv()
-
 from nucleus.data.batching import collate, pushforward_collate
 from nucleus.data.normalize import get_normalizer
 from nucleus.data import ForecastDataset, InMemForecastDataset, PushforwardForecastDataset
@@ -119,6 +116,21 @@ def main(cfg: DictConfig) -> None:
         config=OmegaConf.to_container(cfg),
     )
 
+    train_module = get_train_module(cfg.model_cfg.train_module_name)(
+        checkpoint_path=cfg.checkpoint_path,
+        model_cfg=cfg.model_cfg,
+        data_cfg=cfg.data_cfg,
+        normalizer_cfg=cfg.normalizer_cfg,
+        optim_cfg=cfg.optim_cfg,
+        scheduler_cfg=cfg.scheduler_cfg,
+        log_wandb=False,
+    )
+
+    active_params = count_model_parameters(train_module.model, active=True)
+    total_params = count_model_parameters(train_module.model, active=False)
+    print(f"Active Model parameters: {active_params:,d}")
+    print(f"Total Model parameters: {total_params:,d}")
+    
     normalizer = get_normalizer(OmegaConf.to_container(cfg.normalizer_cfg, resolve=True))
 
     is_pushforward = "pushforward" in cfg.model_cfg.train_module_name
@@ -144,6 +156,10 @@ def main(cfg: DictConfig) -> None:
         **dataset_kwargs,
         time_step=cfg.time_step,
         start_time=cfg.start_time,
+        fluid_params=train_module.model.fluid_params,
+        heater_params=train_module.model.heater_params,
+        global_params=train_module.model.global_params,
+        layout=train_module.model.layout,
         normalizer=normalizer,
         augment=True,
         layout=cfg.model_cfg.layout
@@ -155,9 +171,12 @@ def main(cfg: DictConfig) -> None:
         **dataset_kwargs,
         time_step=cfg.time_step,
         start_time=cfg.start_time,
+        fluid_params=train_module.model.fluid_params,
+        heater_params=train_module.model.heater_params,
+        global_params=train_module.model.global_params,
+        layout=train_module.model.layout,
         normalizer=normalizer,
         augment=False,
-        layout=cfg.model_cfg.layout
     )
 
     train_dataloader = DataLoader(
@@ -182,21 +201,6 @@ def main(cfg: DictConfig) -> None:
         multiprocessing_context='fork',
         collate_fn=collate_fn,
     )
-    
-    train_module = get_train_module(cfg.model_cfg.train_module_name)(
-        checkpoint_path=cfg.checkpoint_path,
-        model_cfg=cfg.model_cfg,
-        data_cfg=cfg.data_cfg,
-        normalizer_cfg=cfg.normalizer_cfg,
-        optim_cfg=cfg.optim_cfg,
-        scheduler_cfg=cfg.scheduler_cfg,
-        log_wandb=False,
-    )
-
-    active_params = count_model_parameters(train_module.model, active=True)
-    total_params = count_model_parameters(train_module.model, active=False)
-    print(f"Active Model parameters: {active_params:,d}")
-    print(f"Total Model parameters: {total_params:,d}")
 
     progress_bar = RichProgressBar(
         theme=RichProgressBarTheme(

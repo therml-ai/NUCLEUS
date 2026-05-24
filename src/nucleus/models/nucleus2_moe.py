@@ -20,6 +20,34 @@ from ._api import register_model
 __all__ = ["Nucleus2MoE"]
     
 class TransformerMoEBlock(nn.Module):
+    expected_fluid_params = [
+        "inv_reynolds",
+        "cpgas",
+        "mugas",
+        "rhogas",
+        "thcogas",
+        "stefan",
+        "prandtl",
+        "gravy",
+        "bulk_temp",
+        "sat_temp"
+    ]
+    expected_heater_params = [
+        "wallTemp",
+        "xMin",
+        "xMax"
+    ]
+    expected_global_params = [
+        "gravy"
+    ]
+    expected_fields = [
+        "dfun", # sdf
+        "temperature"
+        "velx",
+        "vely"
+    ]
+    layout = "t h w c"
+    
     def __init__(
         self,
         embed_dim: int,

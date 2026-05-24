@@ -22,20 +22,25 @@ class InMemForecastDataset(Dataset):
         history_time_window: int,
         time_step: int,
         start_time: int,
+        fluid_params: List[str],
+        heater_params: List[str],
+        global_params: List[str],
+        layout: str,
         normalizer: Optional[Normalizer],
         augment: bool = False,
-        layout: str = "t h w c"
     ):
         super().__init__()
         self.filenames = filenames
-        
         self.future_time_window = future_time_window
         self.history_time_window = history_time_window
         self.time_step = time_step
         self.start_time = start_time
+        self.fluid_params = fluid_params
+        self.heater_params = heater_params
+        self.global_params = global_params
+        self.layout = layout
         self.normalizer = normalizer
         self.augment = augment
-        self.layout = layout
         
         if input_fields is not None:
             self.input_fields = input_fields

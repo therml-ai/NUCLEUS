@@ -23,6 +23,38 @@ from ._api import register_model
 __all__ = ["Nucleus1ViTMoE", "Nucleus1AxialMoE", "Nucleus1NeighborMoE"]
 
 class Nucleus1MoEBase(nn.Module):
+    expected_fluid_params = [
+        "inv_reynolds",
+        "cpgas",
+        "mugas",
+        "rhogas",
+        "thcogas",
+        "stefan",
+        "prandtl",
+        "gravy",
+        "bulk_temp",
+        "sat_temp"
+    ]
+    expected_heater_params = [
+        "wallTemp",
+        "nucWaitTime",
+        "rcdAngle",
+        "advAngle",
+        "velContact",
+        "xMin",
+        "xMax"
+    ]
+    expected_global_params = [
+        "gravy"
+    ]
+    expected_fields = [
+        "dfun", # sdf
+        "temperature"
+        "velx",
+        "vely"
+    ]
+    layout = "t c h w"
+    
     def __init__(
         self,
         input_fields: int,
@@ -143,7 +175,7 @@ class Nucleus1MoEBase(nn.Module):
         use_sdf_reinit: bool = False,
         return_moe_outputs: bool = False
     ):
-        assert initial_state.dim() == 5, "initial state must be [B, T, H, W, C]"
+        assert initial_state.dim() == 5, "initial state must be [B, T, C, H, W]"
         assert fluid_params.dim() == 2, "fluid params must be [B, num_params]"
         assert initial_state.shape[0] == fluid_params.shape[0]
         assert input_time_window_size == initial_state.shape[1]

@@ -142,30 +142,16 @@ class CollatedBatch:
             device=device
         )
         
-def get_fluid_params(d: Dict):
-    return [
-        d["inv_reynolds"],
-        d["cpgas"],
-        d["mugas"],
-        d["rhogas"],
-        d["thcogas"],
-        d["stefan"],
-        d["prandtl"],
-        d["gravy"],
-        d["bulk_temp"],
-        d["heater"]["wallTemp"],
-        d["heater"]["nucWaitTime"],
-        d["heater"]["rcdAngle"],
-        d["heater"]["advAngle"],
-        d["heater"]["velContact"],
-        d["heater"]["xMin"],
-        d["heater"]["xMax"]
-    ]
+def get_fluid_params(sim_params_dict: Dict, fluid_params: List[str], heater_params: List[str], global_params: List[str]):
+    fp = [sim_params_dict[param] for param in fluid_params]
+    hp = [sim_params_dict["heater"][param] for param in heater_params]
+    gp = [sim_params_dict[param] for param in global_params]
+    return fp + hp + gp
     
 def get_fluid_params_tensor(fluid_params_dict: Dict):
     return torch.tensor(get_fluid_params(fluid_params_dict), dtype=torch.float32)
 
-def make_data(input, target, fluid_params_dict, downsample_factor: int, rollout_steps: Optional[int] = None):
+def make_data(input, target, fluid_params_dict, downsample_factor: int, fluid_params: List[str], heater_params: List[str], global_params: List[str]):
     dx = (fluid_params_dict["x_max"] - fluid_params_dict["x_min"]) / (fluid_params_dict["num_blocks_x"] * int(fluid_params_dict["nx_block"]))
     dy = (fluid_params_dict["y_max"] - fluid_params_dict["y_min"]) / (fluid_params_dict["num_blocks_y"] * int(fluid_params_dict["ny_block"]))
 
@@ -185,8 +171,7 @@ def make_data(input, target, fluid_params_dict, downsample_factor: int, rollout_
         y_grid=y_grid,
         dx=dx,
         dy=dy,
-        rollout_steps=rollout_steps,
-        fluid_params_tensor=get_fluid_params_tensor(fluid_params_dict)
+        fluid_params_tensor=get_fluid_params_tensor(fluid_params_dict, fluid_params, heater_params, global_params)
     )
 
 def collate(data: List[Data]):
