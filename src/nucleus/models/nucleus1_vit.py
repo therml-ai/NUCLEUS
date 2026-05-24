@@ -15,6 +15,7 @@ from nucleus.layers.nucleus1_transformer_block import (
     Nucleus1TransformerAxialBlock,
     Nucleus1TransformerNeighborBlock,
 )
+from nucleus.utils.sdf_reinit import sdf_reinit_sussman
 from nucleus.data.batching import CollatedBatch
 from ._api import register_model
 
@@ -67,12 +68,14 @@ class Nucleus1ViTBase(nn.Module):
         self.vel_proj = nn.Conv2d(embed_dim, 2, kernel_size=3, padding=1, dtype=torch.float32)
 
     def forward(self, batch: CollatedBatch) -> torch.Tensor:
+        return self.step(batch.input, batch.fluid_params_tensor)
+        
+    def step(self, input: torch.Tensor, fluid_params: torch.Tensor) -> torch.Tensor:
         """
         x: (B, T, C, H, W)
         fluid_params: (B, num_fluid_params)
         """
-        x = batch.input
-        fluid_params = batch.fluid_params_tensor
+        x = input
         B, T, _, _, _ = x.shape
         
         input = x.clone()
@@ -119,6 +122,36 @@ class Nucleus1ViTBase(nn.Module):
         x = x + input[:, -1].unsqueeze(1).expand(-1, T, -1, -1, -1)
         
         return x
+    
+    def forward_trajectory(
+        self, 
+        initial_state: torch.Tensor, 
+        fluid_params: torch.Tensor,
+        dx: float,
+        input_time_window_size: int,
+        output_time_window_size: int,
+        trajectory_steps: int,
+        use_sdf_reinit: bool = False,
+        return_moe_outputs: bool = False # this argument is ignored
+    ):
+        assert initial_state.dim() == 5, "initial state must be [B, T, C, H, W]"
+        assert fluid_params.dim() == 2, "fluid params must be [B, num_params]"
+        assert initial_state.shape[0] == fluid_params.shape[0]
+        assert input_time_window_size == initial_state.shape[1]
+
+        trajectory = initial_state.clone()
+
+        for _ in range(input_time_window_size, trajectory_steps, output_time_window_size):
+            pred = self.step(trajectory[:, -input_time_window_size:], fluid_params)
+            output_time_window = pred[:, -output_time_window_size:]
+            
+            if use_sdf_reinit:
+                output_time_window[:, :, 0] = sdf_reinit_sussman(output_time_window[:, :, 0], dx=dx, n_iter=5)
+
+            trajectory = torch.cat((trajectory, output_time_window), dim=1)
+
+        return trajectory
+
         
 @register_model("nucleus1_vit")
 class Nucleus1ViT(Nucleus1ViTBase):

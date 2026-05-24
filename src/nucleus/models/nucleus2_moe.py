@@ -17,7 +17,7 @@ from nucleus.utils.sdf_reinit import sdf_reinit_sussman
 
 from ._api import register_model
 
-__all__ = ["NeighborMoE"]
+__all__ = ["Nucleus2MoE"]
     
 class TransformerMoEBlock(nn.Module):
     def __init__(
