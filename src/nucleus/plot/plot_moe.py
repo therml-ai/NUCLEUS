@@ -11,7 +11,6 @@ import pandas as pd
 import hydra
 from omegaconf import DictConfig
 
-#DEBUG: this may cause issues due to log file
 def plot_rollout_moe_overlay(
     filename: str,
     rollout: torch.Tensor,
