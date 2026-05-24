@@ -21,7 +21,6 @@ def verify_sdf(sdf, dx, dy=None):
     grad_magnitude = torch.sqrt(grad_x**2 + grad_y**2)
     return grad_magnitude.mean(dim=(-2, -1)), grad_magnitude.std(dim=(-2, -1))
 
-
 def sdf_reinit_sussman(
     sdf0: torch.Tensor,
     dx: float,
@@ -33,7 +32,7 @@ def sdf_reinit_sussman(
     """
     Convention: sdf > 0 = vapor, sdf < 0 = liquid.
     Args:
-        sdf0:   (H, W) tensor
+        sdf0:   (..., H, W) tensor
         dx:     grid spacing in x
         dy:     grid spacing in y (defaults to dx)
         n_iter: pseudo-time iterations (5 is enough for in-training use)
@@ -42,27 +41,40 @@ def sdf_reinit_sussman(
         sdf:    redistanced SDF, same shape as sdf0
     """
     
-    if dy   is None: dy = dx
-    if dtau is None: dtau = 0.5 * min(dx, dy)
-    eps = 1e-6
+    sdf0_shape = sdf0.shape
+    if sdf0.dim() == 2:
+        sdf0 = sdf0[None, ...] # Add a batch dimension
+    if sdf0.dim() > 3:
+        # flatten axes before H and W
+        sdf0 = sdf0.view(-1, sdf0.shape[-2], sdf0.shape[-1])
+    
+    reinit_sdf = torch.empty_like(sdf0)
+    for i in range(sdf0.shape[0]):
+        sdf0_step = sdf0[i]
+        
+        if dy   is None: dy = dx
+        if dtau is None: dtau = 0.5 * min(dx, dy)
+        eps = 1e-6
 
-    dsdf_dx = _ddx(sdf0, dx)
-    dsdf_dy = _ddy(sdf0, dy)
-    grad_mag0 = torch.sqrt(dsdf_dx**2 + dsdf_dy**2 + eps)
-    S = sdf0 / torch.sqrt(sdf0**2 + (grad_mag0 * dx)**2 + eps)
-    S = S.detach() # smoothed sdf is frozen across iterations and not backpropped through
+        dsdf_dx = _ddx(sdf0_step, dx)
+        dsdf_dy = _ddy(sdf0_step, dy)
+        grad_mag0 = torch.sqrt(dsdf_dx**2 + dsdf_dy**2 + eps)
+        S = sdf0_step / torch.sqrt(sdf0_step**2 + (grad_mag0 * dx)**2 + eps)
+        S = S.detach() # smoothed sdf is frozen across iterations and not backpropped through
 
-    sdf = sdf0.clone()
-    for _ in range(n_iter):
-        sdf_prev = sdf.clone()
-        grad_mag = godunov_grad_mag(sdf, S, dx, dy, eps)
-        sdf = sdf - dtau * S * (grad_mag - 1.0)
+        sdf = sdf0_step.clone()
+        for _ in range(n_iter):
+            sdf_prev = sdf.clone()
+            grad_mag = godunov_grad_mag(sdf, S, dx, dy, eps)
+            sdf = sdf - dtau * S * (grad_mag - 1.0)
 
-        # only update away from interface
-        near_mask = sdf0 > near_threshold
-        sdf[near_mask] = sdf0[near_mask]
+            # only update away from interface
+            near_mask = sdf0_step > near_threshold
+            sdf[near_mask] = sdf0_step[near_mask]
+            
+        reinit_sdf[i] = sdf
 
-    return sdf
+    return reinit_sdf.view(sdf0_shape)
 
 def godunov_grad_mag(sdf, S, dx, dy, eps):
     # One-sided differences via convolution.

@@ -11,9 +11,10 @@ from nucleus.layers.droppath import DropPath
 from nucleus.layers import (
     LinearEmbed,
     LinearDebed,
-    TransformerMoEBlock,
 )
 from nucleus.data.batching import CollatedBatch
+from nucleus.utils.sdf_reinit import sdf_reinit_sussman
+
 from ._api import register_model
 
 __all__ = ["NeighborMoE"]
@@ -29,7 +30,7 @@ class TransformerMoEBlock(nn.Module):
         num_fluid_params: int,
         mlp_ratio: float = 4.0,
     ):
-        super().__init__(embed_dim, num_heads, drop_path_prob, mlp_ratio=mlp_ratio)
+        super().__init__()
 
         self.drop_path = DropPath(drop_path_prob)
 
@@ -128,20 +129,23 @@ class MoEBase(nn.Module):
             patch_size=patch_size,
             embed_dim=embed_dim,
             out_channels=output_fields
-        )        
-        
+        )
+
     def forward(self, batch: CollatedBatch) -> torch.Tensor:
+        return self.step(batch.input, batch.fluid_params_tensor)
+        
+    def step(self, input: torch.Tensor, fluid_params: torch.Tensor):        
         """
         x: (B, T, H, W, C)
         fluid_params: (B, num_fluid_params)
         """
-        x = batch.input
-        input = x
         assert input.dtype == torch.float32
+        assert fluid_params.dtype == torch.float32
+
+        x = input
         
         with record_function("encode"):
-            x = self.embed(x)
-        embed = x
+            x = embed = self.embed(x)
         
         # Get axial frequencies for rotary embedding.
         # We expand the dims so that it matches [B, T, H, W, heads, head_dim] used in the attention layers.
@@ -155,7 +159,7 @@ class MoEBase(nn.Module):
         moe_outputs = []
         for idx, blk in enumerate(self.blocks):
             with record_function(f"block_{idx}"):
-               x, moe_output = blk(x, rotary_freqs, batch.fluid_params_tensor)
+               x, moe_output = blk(x, rotary_freqs, fluid_params)
                moe_outputs.append(moe_output)
         
         # Skip connections from patch embeddings
@@ -166,10 +170,40 @@ class MoEBase(nn.Module):
             x = self.debed(x)
 
         return x, moe_outputs
+    
+    def forward_trajectory(
+        self, 
+        initial_state: torch.Tensor, 
+        fluid_params: torch.Tensor,
+        dx: float,
+        input_time_window_size: int,
+        output_time_window_size: int,
+        trajectory_steps: int,
+        use_sdf_reinit: bool = False,
+        return_moe_outputs: bool = False
+    ):
+        assert initial_state.dim() == 5, "initial state must be [B, T, H, W, C]"
+        assert fluid_params.dim() == 2, "fluid params must be [B, num_params]"
+        assert initial_state.shape[0] == fluid_params.shape[0]
+        assert input_time_window_size == initial_state.shape[1]
 
-@register_model("neighbor_moe")
-class NeighborMoE(MoEBase):
-    pass
+        trajectory = initial_state.clone()
+        trajectory_moe_outputs = [] if return_moe_outputs else None
+
+        for _ in range(input_time_window_size, trajectory_steps, output_time_window_size):
+            pred, moe_outputs = self.step(trajectory[:, -input_time_window_size:], fluid_params)
+            output_time_window = pred[:, -output_time_window_size:]
+            
+            if use_sdf_reinit:
+                output_time_window[..., 0] = sdf_reinit_sussman(output_time_window[..., 0], dx=dx, n_iter=5)
+
+            trajectory = torch.cat((trajectory, output_time_window), dim=1)
+            if return_moe_outputs:
+                trajectory_moe_outputs.append(moe_outputs)
+
+        if return_moe_outputs:
+            return trajectory, trajectory_moe_outputs
+        return trajectory
 
 @register_model("nucleus2_moe")
 class Nucleus2MoE(MoEBase):

@@ -1,4 +1,4 @@
-name: neighbor_moe
+name: nucleus2_moe
 train_module_name: moe_conditioned_forecast
 layout: "t h w c"
 params:
