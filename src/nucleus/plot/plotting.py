@@ -10,6 +10,7 @@ from nucleus.utils.physical_metrics import vorticity
 from nucleus.test import TestResults
 import joblib
 import numpy as np
+from scipy.stats import wasserstein_distance
 
 def ax_default(ax, title: Optional[str] = None):
     if title is not None:
@@ -117,51 +118,59 @@ def plot_rollout(
     save_dir: str,
     rollout: torch.Tensor,
     test_results: TestResults,
-    step_size: int
+    step_size: int,
+    include_ground_truth: bool = False,
 ):
-    def make_plot(timestep, rollout):
+    def make_plot(timestep, rollout, targets):
         sdf, temp, velx, vely = rollout[timestep].unbind(dim=-1)
         sdf = torch.flipud(sdf)
         temp = torch.flipud(temp)
         velx = torch.flipud(velx)
         vely = torch.flipud(vely)
-        
         vel_mag = torch.sqrt(velx**2 + vely**2)
-        vort = vorticity(velx, vely, 1/4, 1/4)
-        
-        fig, axs = plt.subplots(1, 3, figsize=(10, 5), layout="constrained")
-        
-        # 1. Plot the SDF
-        im = plot_sdf(axs[0], sdf, title=f"SDF {timestep}")
-        plt.colorbar(im, ax=axs[0], fraction=0.04, pad=0.05)
-        
-        # 2. Plot the temperature
-        im = plot_temp(
-            axs[1], 
-            temp, 
-            test_results.fluid_params["bulk_temp"], 
-            test_results.fluid_params["heater"]["wallTemp"],
-            title=f"Temperature {timestep}"
-        )
-        plt.colorbar(im, ax=axs[1], fraction=0.04, pad=0.05)
-        
-        # 3. Plot the velocity magnitude
-        im = plot_vel_mag(axs[2], vel_mag, title=f"Vel Norm {timestep}")
-        plt.colorbar(im, ax=axs[2], fraction=0.04, pad=0.05)
-        
-        # 4. Plot the vorticity
-        #im = plot_vorticity(axs[3], vort, title=f"Vorticity {timestep}")
-        #plt.colorbar(im, ax=axs[3], fraction=0.04, pad=0.05)
-        
+
+        bulk_temp = test_results.fluid_params["bulk_temp"]
+        heater_temp = test_results.fluid_params["heater"]["wallTemp"]
+
+        nrows = 2 if include_ground_truth else 1
+        fig, axs = plt.subplots(nrows, 3, figsize=(10, 7 if include_ground_truth else 3.5), layout="constrained")
+
+        pred_axs = axs[0] if include_ground_truth else axs
+
+        # Row 0: Prediction
+        im = plot_sdf(pred_axs[0], sdf, title=f"Pred SDF {timestep}")
+        plt.colorbar(im, ax=pred_axs[0], fraction=0.04, pad=0.05)
+        im = plot_temp(pred_axs[1], temp, bulk_temp, heater_temp, title=f"Pred Temp {timestep}")
+        plt.colorbar(im, ax=pred_axs[1], fraction=0.04, pad=0.05)
+        im = plot_vel_mag(pred_axs[2], vel_mag, title=f"Pred Vel Norm {timestep}")
+        plt.colorbar(im, ax=pred_axs[2], fraction=0.04, pad=0.05)
+
+        if include_ground_truth:
+            gt_sdf, gt_temp, gt_velx, gt_vely = targets[timestep].unbind(dim=-1)
+            gt_sdf = torch.flipud(gt_sdf)
+            gt_temp = torch.flipud(gt_temp)
+            gt_velx = torch.flipud(gt_velx)
+            gt_vely = torch.flipud(gt_vely)
+            gt_vel_mag = torch.sqrt(gt_velx**2 + gt_vely**2)
+
+            # Row 1: Ground truth
+            im = plot_sdf(axs[1, 0], gt_sdf, title=f"GT SDF {timestep}")
+            plt.colorbar(im, ax=axs[1, 0], fraction=0.04, pad=0.05)
+            im = plot_temp(axs[1, 1], gt_temp, bulk_temp, heater_temp, title=f"GT Temp {timestep}")
+            plt.colorbar(im, ax=axs[1, 1], fraction=0.04, pad=0.05)
+            im = plot_vel_mag(axs[1, 2], gt_vel_mag, title=f"GT Vel Norm {timestep}")
+            plt.colorbar(im, ax=axs[1, 2], fraction=0.04, pad=0.05)
+
         plt.savefig(f"{save_dir}/rollout_{str(timestep).zfill(4)}.png", bbox_inches="tight")
         plt.close()
 
     # TODO: really don't want batch dimension, but some of the metrics are
     # pretty rigid about using a batch dimension...
     rollout = rollout.squeeze(0)
+    targets = test_results.targets.squeeze(0)
     assert rollout.dim() == 4, "Rollout must be a 4D tensor (T, C, H, W)"
-    
-    joblib.Parallel(n_jobs=4)(joblib.delayed(make_plot)(timestep, rollout) for timestep in range(0, rollout.shape[0], step_size))
+
+    joblib.Parallel(n_jobs=4)(joblib.delayed(make_plot)(timestep, rollout, targets) for timestep in range(0, rollout.shape[0], step_size))
     
 def plot_rollout_moe_overlay(
     save_dir: str,
@@ -208,7 +217,59 @@ def plot_rollout_moe_overlay(
         plt.close()
     
     joblib.Parallel(n_jobs=-1)(joblib.delayed(make_plot)(timestep, rollout.squeeze(0)) for timestep in range(0, rollout.shape[1], step_size))
-    
+
+def plot_distribution(
+    save_dir: str,
+    rollout: torch.Tensor,
+    test_results: TestResults,
+):
+    # rollout and targets are (1, T, H, W, C) — squeeze batch dim, flatten all timesteps
+    rollout = rollout.squeeze(0).numpy()   # T H W C
+    targets = test_results.targets.squeeze(0).numpy()
+
+    pred_temp = rollout[:, :, :, 1].ravel()
+    gt_temp   = targets[:, :, :, 1].ravel()
+    pred_velx = rollout[:, :, :, 2].ravel()
+    gt_velx   = targets[:, :, :, 2].ravel()
+    pred_vely = rollout[:, :, :, 3].ravel()
+    gt_vely   = targets[:, :, :, 3].ravel()
+
+    # Subsample to keep KDE fast
+    max_pts = 50_000
+    rng = np.random.default_rng(seed=0)
+    def subsample(a, b):
+        if a.size > max_pts:
+            idx = rng.choice(a.size, max_pts, replace=False)
+            return a[idx], b[idx]
+        return a, b
+
+    pred_temp_s, gt_temp_s = subsample(pred_temp, gt_temp)
+    pred_velx_s, gt_velx_s = subsample(pred_velx, gt_velx)
+    pred_vely_s, gt_vely_s = subsample(pred_vely, gt_vely)
+
+    emd_temp = wasserstein_distance(pred_temp, gt_temp)
+    emd_velx = wasserstein_distance(pred_velx, gt_velx)
+    emd_vely = wasserstein_distance(pred_vely, gt_vely)
+
+    fig, axs = plt.subplots(1, 3, figsize=(14, 4), layout="constrained")
+
+    for ax, pred_s, gt_s, emd, xlabel, title in [
+        (axs[0], pred_temp_s, gt_temp_s, emd_temp, "Temperature",       "Temperature Distribution"),
+        (axs[1], pred_velx_s, gt_velx_s, emd_velx, "Horizontal Velocity", "Horizontal Velocity Distribution"),
+        (axs[2], pred_vely_s, gt_vely_s, emd_vely, "Vertical Velocity",   "Vertical Velocity Distribution"),
+    ]:
+        sns.kdeplot(gt_s,   ax=ax, label="Ground Truth", color="steelblue",  linewidth=1.5)
+        sns.kdeplot(pred_s, ax=ax, label="Prediction",   color="darkorange", linewidth=1.5)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel("Density")
+        ax.set_title(title)
+        ax.annotate(f"EMD = {emd:.4f}", xy=(0.97, 0.95), xycoords="axes fraction",
+                    ha="right", va="top", fontsize=9)
+        ax.legend()
+
+    plt.savefig(f"{save_dir}/distribution.png", bbox_inches="tight")
+    plt.close()
+
 if __name__ == "__main__":
     import h5py
     import numpy as np
