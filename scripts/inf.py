@@ -1,12 +1,14 @@
 import os
 import pathlib
 import torch
+import h5py
+import json
 from collections import OrderedDict
 from nucleus.models import get_model
 import hydra
 from omegaconf import DictConfig, OmegaConf
 from nucleus.data.normalize import get_normalizer
-from nucleus.test import run_test, TestResults
+from nucleus.run_forward_trajectory import run_test, TestResults
 from nucleus.plot.plotting import (
     plot_rollout,
     plot_rollout_stability,
@@ -28,31 +30,11 @@ def main(cfg: DictConfig):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model_name = cfg.model_cfg.name
-
-    # model_kwargs = OmegaConf.to_container(cfg.model_cfg.params, resolve=True)
-
-
-    model_kwargs = {
-        "input_fields": 4,
-        "output_fields": 4,
-        "patch_size": cfg.model_cfg.params.patch_size,
-        "embed_dim": cfg.model_cfg.params.embed_dim,
-        "processor_blocks": cfg.model_cfg.params.processor_blocks,
-        "num_heads": cfg.model_cfg.params.num_heads,
-        "num_fluid_params": cfg.model_cfg.params.num_fluid_params,
-    }
-
-    # model_kwargs = OmegaConf.to_container(cfg.model_cfg.params, resolve=True)
-
-    if cfg.model_cfg.params.get("num_experts", None) is not None:
-        model_kwargs["num_experts"] = cfg.model_cfg.params.num_experts
-        model_kwargs["topk"] = cfg.model_cfg.params.topk
-
-
+    model_kwargs = OmegaConf.to_container(cfg.model_cfg.params, resolve=True)
     model = get_model(model_name, **model_kwargs)
     model = model.to(device)
-    model_data = torch.load(cfg.checkpoint_path, map_location=device, weights_only=False)
-            
+    
+    model_data = torch.load(cfg.checkpoint_path, map_location=device, weights_only=False)    
     weight_state_dict = OrderedDict()
     for key, val in model_data["state_dict"].items():
         print(key, val.shape)
@@ -65,7 +47,6 @@ def main(cfg: DictConfig):
     model.load_state_dict(weight_state_dict)
     model.eval()
 
-
     normalizer = get_normalizer(OmegaConf.to_container(cfg.normalizer_cfg, resolve=True))
     
     # Rollouts are saved in the directory containing the checkpoint
@@ -73,7 +54,8 @@ def main(cfg: DictConfig):
     save_root.mkdir(parents=True, exist_ok=True)
     all_test_results = []
     for test_file_path in cfg.data_cfg.test_paths:
-        test_results: TestResults = run_test(cfg, model, normalizer, test_file_path, max_timesteps=1000)
+
+        test_results: TestResults = run_test(cfg, model, normalizer, test_file_path, trajectory_steps=300)
         all_test_results.append(test_results)
 
         save_dir = save_root / f"{test_results.case_name}"
@@ -90,8 +72,14 @@ def main(cfg: DictConfig):
             rollout=test_results.preds,
             test_results=test_results,
         )
+     
+    for test_result in all_test_results:
+        h5py_save_path = save_root / f"{test_result.case_name}.hdf5"
+        with h5py.File(h5py_save_path, "w") as handle:
+            handle.create_dataset("pred_trajectory", data=test_result.preds)
+            handle.create_dataset("gt_trajectory", data=test_result.targets)
         
-    torch.save(all_test_results, save_root / "test_results_reinit.pt")
+        
 if __name__ == "__main__":
     # pylint: disable=no-value-for-parameter
     main()
