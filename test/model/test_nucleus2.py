@@ -22,6 +22,9 @@ def model():
 
 @pytest.mark.parametrize("device", ["cpu"])
 def test_nucleus2(device, model):
+    if device == "cpu":
+        pytest.skip("flex attention not supported on CPU")
+
     model = model.to(device)
     
     batch = CollatedBatch(

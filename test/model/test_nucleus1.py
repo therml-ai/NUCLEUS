@@ -34,6 +34,9 @@ def _get_model(model_name):
 @pytest.mark.parametrize("device", ["cpu"])
 def test_nucleus1_moe(device, model_name):
     
+    if model_name in ("nucleus1_moe") and device == "cpu":
+        pytest.skip("flex attention not supported on CPU")
+    
     model = _get_model(model_name)
     model = model.to(device)
     
@@ -63,6 +66,9 @@ def test_nucleus1_moe(device, model_name):
 @pytest.mark.parametrize("device", ["cpu"])
 def test_nucleus1_vit(device, model_name):
     
+    if model_name in ("nucleus1_neighbor_vit") and device == "cpu":
+        pytest.skip("flex attention not supported on CPU")
+
     model = _get_model(model_name)
     model = model.to(device)
     
