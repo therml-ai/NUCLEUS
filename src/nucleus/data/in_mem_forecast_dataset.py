@@ -117,7 +117,7 @@ class InMemForecastDataset(Dataset):
         inp_data = torch.stack(inp_data, dim=-1) # (T, H, W, C)
         out_data = torch.stack(out_data, dim=-1) # (T, H, W, C)
         
-        sim = self.sim_params[file_idx]
+        sim_params = self.sim_params[file_idx]
         bulk_temp = int(sim_params["bulk_temp"])
         
         if self.normalizer is not None:
