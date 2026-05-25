@@ -119,16 +119,17 @@ def test_nucleus1_forward_trajectory(
     )
     
     return_moe_outputs = "_moe" in model_name
-    trajectory = model.forward_trajectory(
-        initial_state=batch.input,
-        sim_params=batch.sim_params_tensor,
-        dx=1/4,
-        input_time_window_size=8,
-        output_time_window_size=8,
-        trajectory_steps=trajectory_steps,
-        use_sdf_reinit=use_sdf_reinit,
-        return_moe_outputs=return_moe_outputs
-    )
+    with torch.inference_mode():
+        trajectory = model.forward_trajectory(
+            initial_state=batch.input,
+            sim_params=batch.sim_params_tensor,
+            dx=1/4,
+            input_time_window_size=8,
+            output_time_window_size=8,
+            trajectory_steps=trajectory_steps,
+            use_sdf_reinit=use_sdf_reinit,
+            return_moe_outputs=return_moe_outputs
+        )
     if return_moe_outputs:
         trajectory, moe_outputs = trajectory
     
