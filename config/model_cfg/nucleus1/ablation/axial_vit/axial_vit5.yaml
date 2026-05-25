@@ -5,4 +5,3 @@ params:
   embed_dim: 384
   processor_blocks: 8
   num_heads: 6
-  num_fluid_params: 16

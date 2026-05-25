@@ -6,7 +6,6 @@ params:
   embed_dim: 512
   processor_blocks: 12
   num_heads: 8
-  num_fluid_params: 16
   num_experts: 6
   topk: 2
   load_balance_loss_weight: 1e-5
