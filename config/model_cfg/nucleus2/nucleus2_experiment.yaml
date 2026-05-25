@@ -8,5 +8,3 @@ params:
   num_heads: 8
   num_experts: 6
   topk: 2
-  load_balance_loss_weight: 1e-5
-  z_loss_weight: 1e-5
