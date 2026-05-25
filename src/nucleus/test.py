@@ -7,7 +7,6 @@ from nucleus.data import ForecastDataset, InMemForecastDataset
 from nucleus.data.layout import convert_layout
 from nucleus.layers.moe.topk_moe import TopkMoEOutput
 from nucleus.utils.physical_metrics import PhysicalMetrics, BubbleMetrics, physical_metrics, bubble_metrics
-# from nucleus.utils.sdf_reinit import sdf_reinit_sussman
 from nucleus.baseline.poseidon import ScOTOutput
 from nucleus.baseline.moe_dpot import MoEPOTNet
 
@@ -119,8 +118,6 @@ def run_test(cfg, model, normalizer, test_file_path: str, max_timesteps: int):
             tgt = batch.target
 
             torch.compiler.cudagraph_mark_step_begin()
-            passed = batch.get_input()
-            inp = passed.input
             output = model(batch.get_input())
             if isinstance(output, tuple):
                 if isinstance(model, MoEPOTNet):

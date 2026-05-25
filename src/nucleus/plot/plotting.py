@@ -299,7 +299,7 @@ if __name__ == "__main__":
     
     del sdf, temp, velx, vely
     
-    with h5py.File("/share/crsp/lab/amowli/share/BubbleML_2/PoolBoiling-Saturated-FC72-2D/Twall_104.hdf5", "r") as f:
+    with h5py.File("/share/crsp/lab/amowli/share/BubbleML_2_downsampled64_bicubic/PoolBoiling-Saturated-FC72-2D/Twall_104.hdf5", "r") as f:
         sat_sdf = torch.from_numpy(f["dfun"][550])
         sat_temp = torch.from_numpy(f["temperature"][550])
         sat_velx = torch.from_numpy(f["velx"][550])

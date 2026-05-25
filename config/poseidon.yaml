@@ -19,7 +19,6 @@ layout: "t c h w"
 
 checkpoint_path:
 commit_sha:
-  
 optim_cfg:
   name: adamw
   params:

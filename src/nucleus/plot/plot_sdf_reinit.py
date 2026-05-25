@@ -2,6 +2,8 @@ import torch
 import matplotlib.pyplot as plt
 from nucleus.plot.plotting import plot_sdf
 from nucleus.utils.physical_metrics import eikonal
+import hydra
+from omegaconf import DictConfig
 
 def plot_sdf_reinit(sat_pred, sub_pred, sat_pred_with_reinit, sub_pred_with_reinit):
     fig, axs = plt.subplots(2, 2, figsize=(6, 5), layout="constrained")
@@ -29,9 +31,10 @@ def plot_sdf_reinit(sat_pred, sub_pred, sat_pred_with_reinit, sub_pred_with_rein
     plt.savefig("sdf_reinit_comparison.pdf", bbox_inches="tight")
     plt.close()
 
-if __name__ == "__main__":
-    preds = torch.load("/pub/afeeney/bubbleformer_logs/neighbor_moe_poolboiling64_48025794/checkpoints/inference_rollouts/test_results.pt", weights_only=False)
-    preds_with_reinit = torch.load("/pub/afeeney/bubbleformer_logs/neighbor_moe_poolboiling64_48025794/checkpoints/inference_rollouts/test_results_reinit.pt", weights_only=False)
+@hydra.main(version_base=None, config_path="../config", config_name="default")
+def main(cfg: DictConfig):
+    preds = torch.load(f"{cfg.log_dir}/neighbor_moe_poolboiling64_48025794/checkpoints/inference_rollouts/test_results.pt", weights_only=False)
+    preds_with_reinit = torch.load(f"{cfg.log_dir}/neighbor_moe_poolboiling64_48025794/checkpoints/inference_rollouts/test_results_reinit.pt", weights_only=False)
     
     sat_pred = preds[0]
     sub_pred = preds[1]
@@ -44,3 +47,6 @@ if __name__ == "__main__":
         sat_pred_with_reinit=preds_with_reinit[0].preds[0, 25, 0],
         sub_pred_with_reinit=preds_with_reinit[1].preds[0, 25, 0]
     )
+
+if __name__ == "__main__":
+    main()
