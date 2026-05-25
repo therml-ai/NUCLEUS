@@ -34,10 +34,8 @@ def test_in_mem_forecast_dataset(
     future_time_window,
     layout
 ):
-    test_path = "sim.hdf5"
-
     with tempfile.TemporaryDirectory() as tmp:
-        path = os.path.join(tmp, test_path)
+        path = os.path.join(tmp, "sim.hdf5")
         with h5py.File(path, "w") as handle:
             for field in FIELDS:
                 handle.create_dataset(field, data=np.random.randn(100, 64, 64))
