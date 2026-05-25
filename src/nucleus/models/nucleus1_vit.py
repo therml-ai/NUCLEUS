@@ -52,6 +52,7 @@ class Nucleus1ViTBase(nn.Module):
         "velx",
         "vely"
     ]
+    num_sim_params = len(expected_fluid_params) + len(expected_heater_params) + len(expected_global_params)
     layout = "t c h w"
     
     def __init__(
@@ -62,7 +63,6 @@ class Nucleus1ViTBase(nn.Module):
         embed_dim: int,
         num_heads: int,
         processor_blocks: int,
-        num_fluid_params: int,
         mlp_ratio: float = 4.0,
     ):
         super().__init__()
@@ -78,7 +78,7 @@ class Nucleus1ViTBase(nn.Module):
             embed_dim=embed_dim,
         )
 
-        self.film_embed = FiLMMLP(num_fluid_params, embed_dim)
+        self.film_embed = FiLMMLP(self.num_sim_params, embed_dim)
 
         self.blocks = nn.ModuleList([
             Nucleus1TransformerBlock(
@@ -100,12 +100,13 @@ class Nucleus1ViTBase(nn.Module):
         self.vel_proj = nn.Conv2d(embed_dim, 2, kernel_size=3, padding=1, dtype=torch.float32)
 
     def forward(self, batch: CollatedBatch) -> torch.Tensor:
-        return self.step(batch.input, batch.fluid_params_tensor)
+        return self.step(batch.input, batch.sim_params_tensor)
         
-    def step(self, input: torch.Tensor, fluid_params: torch.Tensor) -> torch.Tensor:
+    def step(self, input: torch.Tensor, sim_params: torch.Tensor) -> torch.Tensor:
         """
-        x: (B, T, C, H, W)
-        fluid_params: (B, num_fluid_params)
+        Args:
+            x: (B, T, C, H, W)
+            sim_params: (B, num_sim_params)
         """
         x = input
         B, T, _, _, _ = x.shape
@@ -124,7 +125,7 @@ class Nucleus1ViTBase(nn.Module):
 
         # Apply FiLM conditioning on the embeddings
         with record_function("film_embed"):
-            x = self.film_embed(x, fluid_params)
+            x = self.film_embed(x, sim_params)
 
         # Attention blocks
         for idx, blk in enumerate(self.blocks):
@@ -158,7 +159,7 @@ class Nucleus1ViTBase(nn.Module):
     def forward_trajectory(
         self, 
         initial_state: torch.Tensor, 
-        fluid_params: torch.Tensor,
+        sim_params: torch.Tensor,
         dx: float,
         input_time_window_size: int,
         output_time_window_size: int,
@@ -167,14 +168,14 @@ class Nucleus1ViTBase(nn.Module):
         return_moe_outputs: bool = False # this argument is ignored
     ):
         assert initial_state.dim() == 5, "initial state must be [B, T, C, H, W]"
-        assert fluid_params.dim() == 2, "fluid params must be [B, num_params]"
-        assert initial_state.shape[0] == fluid_params.shape[0]
+        assert sim_params.dim() == 2, "fluid params must be [B, num_params]"
+        assert initial_state.shape[0] == sim_params.shape[0]
         assert input_time_window_size == initial_state.shape[1]
 
         trajectory = initial_state.clone()
 
         for _ in range(input_time_window_size, trajectory_steps, output_time_window_size):
-            pred = self.step(trajectory[:, -input_time_window_size:], fluid_params)
+            pred = self.step(trajectory[:, -input_time_window_size:], sim_params)
             output_time_window = pred[:, -output_time_window_size:]
             
             if use_sdf_reinit:
@@ -195,7 +196,6 @@ class Nucleus1ViT(Nucleus1ViTBase):
         embed_dim: int,
         num_heads: int,
         processor_blocks: int,
-        num_fluid_params: int,
         mlp_ratio: float = 4.0,
     ):
         super().__init__(
@@ -205,7 +205,6 @@ class Nucleus1ViT(Nucleus1ViTBase):
             embed_dim=embed_dim,
             num_heads=num_heads,
             processor_blocks=processor_blocks,
-            num_fluid_params=num_fluid_params,
             mlp_ratio=mlp_ratio,
         )
 
@@ -219,7 +218,6 @@ class Nucleus1AxialViT(Nucleus1ViTBase):
         embed_dim: int,
         num_heads: int,
         processor_blocks: int,
-        num_fluid_params: int,
         mlp_ratio: float = 4.0,
     ):
         super().__init__(
@@ -229,7 +227,6 @@ class Nucleus1AxialViT(Nucleus1ViTBase):
             embed_dim=embed_dim,
             num_heads=num_heads,
             processor_blocks=processor_blocks,
-            num_fluid_params=num_fluid_params,
             mlp_ratio=mlp_ratio,
         )
         self.blocks = nn.ModuleList([
@@ -251,7 +248,6 @@ class Nucleus1NeighborViT(Nucleus1ViTBase):
         embed_dim: int,
         num_heads: int,
         processor_blocks: int,
-        num_fluid_params: int,
         mlp_ratio: float = 4.0,
     ):
         super().__init__(
@@ -261,7 +257,6 @@ class Nucleus1NeighborViT(Nucleus1ViTBase):
             embed_dim=embed_dim,
             num_heads=num_heads,
             processor_blocks=processor_blocks,
-            num_fluid_params=num_fluid_params,
             mlp_ratio=mlp_ratio,
         )
         self.blocks = nn.ModuleList([

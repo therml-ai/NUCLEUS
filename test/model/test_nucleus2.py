@@ -15,7 +15,6 @@ def model():
         embed_dim=128,
         num_heads=2,
         processor_blocks=2,
-        num_fluid_params=16,
         num_experts=4,
         topk=2,
         mlp_ratio=4.0
@@ -28,8 +27,8 @@ def test_nucleus2(device, model):
     batch = CollatedBatch(
         input=torch.randn(4, 8, 64, 64, 4, device=device),
         target=None,
-        fluid_params_dict={},
-        fluid_params_tensor=torch.randn(4, 16, device=device),
+        sim_params_dict={},
+        sim_params_tensor=torch.randn(4, model.num_sim_params, device=device),
         x_grid=torch.randn(64, device=device),
         y_grid=torch.randn(64, device=device),
         dx=torch.tensor(0.01, device=device),
@@ -62,8 +61,8 @@ def test_nucleus2_forward_trajectory(
     batch = CollatedBatch(
         input=torch.randn(batch_size, 8, 64, 64, 4, device=device),
         target=None,
-        fluid_params_dict={},
-        fluid_params_tensor=torch.randn(batch_size, 16, device=device),
+        sim_params_dict={},
+        sim_params_tensor=torch.randn(batch_size, model.num_sim_params, device=device),
         x_grid=torch.randn(64, device=device),
         y_grid=torch.randn(64, device=device),
         dx=torch.tensor(0.01, device=device),
@@ -72,7 +71,7 @@ def test_nucleus2_forward_trajectory(
     
     trajectory = model.forward_trajectory(
         initial_state=batch.input,
-        fluid_params=batch.fluid_params_tensor,
+        sim_params=batch.sim_params_tensor,
         dx=1/4,
         input_time_window_size=8,
         output_time_window_size=8,

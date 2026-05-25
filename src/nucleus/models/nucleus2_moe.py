@@ -19,7 +19,66 @@ from ._api import register_model
 
 __all__ = ["Nucleus2MoE"]
     
-class TransformerMoEBlock(nn.Module):
+class TransformerMoEBlock(nn.Module):    
+    def __init__(
+        self,
+        embed_dim: int,
+        num_heads: int,
+        num_experts: int,
+        topk: int,
+        drop_path_prob: float,
+        num_sim_params: int,
+        mlp_ratio: float = 4.0,
+    ):
+        super().__init__()
+
+        self.drop_path = DropPath(drop_path_prob)
+
+        self.attention_norm = AdaptiveLayerNorm(embed_dim, num_sim_params)
+        self.mlp_norm = AdaptiveLayerNorm(embed_dim, num_sim_params)
+
+        self.router = TopkRouterWithBias(
+            num_experts, 
+            embed_dim, 
+            topk, 
+            bias_update_rate=0.001, # This was used in deepseek-v3
+            softmax_first=False
+        )
+        
+        self.attention = NeighborhoodAttention(embed_dim=embed_dim, num_heads=num_heads)
+        
+        self.mlp = TopkMoE(
+            num_experts=num_experts,
+            hidden_dim=embed_dim,
+            intermediate_dim=int(embed_dim * mlp_ratio),
+            topk=topk,
+            router=self.router
+        )
+
+    def _attention(
+        self, x: torch.Tensor, freqs: torch.Tensor, sim_params: torch.Tensor
+    ) -> torch.Tensor:
+        with record_function("attention"):
+            x = x + self.drop_path(self.attention(self.attention_norm(x, sim_params), freqs))
+        return x
+    
+    def _mlp(self, x: torch.Tensor, sim_params: torch.Tensor) -> torch.Tensor:
+        with record_function("moe"):
+            moe_output: TopkMoEOutput = self.mlp(self.mlp_norm(x, sim_params))
+            x = x + self.drop_path(moe_output.out)
+        return x, moe_output
+        
+    def forward(
+        self,
+        x: torch.Tensor,
+        freqs: torch.Tensor,
+        sim_params: torch.Tensor,
+    ) -> torch.Tensor:
+        x = self._attention(x, freqs, sim_params)
+        x, moe_output = self._mlp(x, sim_params)
+        return x, moe_output
+
+class MoEBase(nn.Module):
     expected_fluid_params = [
         "inv_reynolds",
         "cpgas",
@@ -46,67 +105,8 @@ class TransformerMoEBlock(nn.Module):
         "velx",
         "vely"
     ]
+    num_sim_params = len(expected_fluid_params) + len(expected_heater_params) + len(expected_global_params)
     layout = "t h w c"
-    
-    def __init__(
-        self,
-        embed_dim: int,
-        num_heads: int,
-        num_experts: int,
-        topk: int,
-        drop_path_prob: float,
-        num_fluid_params: int,
-        mlp_ratio: float = 4.0,
-    ):
-        super().__init__()
-
-        self.drop_path = DropPath(drop_path_prob)
-
-        self.attention_norm = AdaptiveLayerNorm(embed_dim, num_fluid_params)
-        self.mlp_norm = AdaptiveLayerNorm(embed_dim, num_fluid_params)
-
-        self.router = TopkRouterWithBias(
-            num_experts, 
-            embed_dim, 
-            topk, 
-            bias_update_rate=0.001, # This was used in deepseek-v3
-            softmax_first=False
-        )
-        
-        self.attention = NeighborhoodAttention(embed_dim=embed_dim, num_heads=num_heads)
-        
-        self.mlp = TopkMoE(
-            num_experts=num_experts,
-            hidden_dim=embed_dim,
-            intermediate_dim=int(embed_dim * mlp_ratio),
-            topk=topk,
-            router=self.router
-        )
-
-    def _attention(
-        self, x: torch.Tensor, freqs: torch.Tensor, fluid_params: torch.Tensor
-    ) -> torch.Tensor:
-        with record_function("attention"):
-            x = x + self.drop_path(self.attention(self.attention_norm(x, fluid_params), freqs))
-        return x
-    
-    def _mlp(self, x: torch.Tensor, fluid_params: torch.Tensor) -> torch.Tensor:
-        with record_function("moe"):
-            moe_output: TopkMoEOutput = self.mlp(self.mlp_norm(x, fluid_params))
-            x = x + self.drop_path(moe_output.out)
-        return x, moe_output
-        
-    def forward(
-        self,
-        x: torch.Tensor,
-        freqs: torch.Tensor,
-        fluid_params: torch.Tensor,
-    ) -> torch.Tensor:
-        x = self._attention(x, freqs, fluid_params)
-        x, moe_output = self._mlp(x, fluid_params)
-        return x, moe_output
-
-class MoEBase(nn.Module):
     def __init__(
         self,
         input_fields: int,
@@ -115,7 +115,6 @@ class MoEBase(nn.Module):
         embed_dim: int,
         num_heads: int,
         processor_blocks: int,
-        num_fluid_params: int,
         num_experts: int,
         topk: int,
         mlp_ratio: float = 4.0,
@@ -145,8 +144,8 @@ class MoEBase(nn.Module):
                 num_heads=num_heads,
                 num_experts=num_experts,
                 topk=topk,
+                num_sim_params=self.num_sim_params,
                 drop_path_prob=self.drop_path_probs[idx].item(),
-                num_fluid_params=num_fluid_params,
                 mlp_ratio=mlp_ratio,
             )
             for idx in range(processor_blocks)
@@ -160,15 +159,15 @@ class MoEBase(nn.Module):
         )
 
     def forward(self, batch: CollatedBatch) -> torch.Tensor:
-        return self.step(batch.input, batch.fluid_params_tensor)
+        return self.step(batch.input, batch.sim_params_tensor)
         
-    def step(self, input: torch.Tensor, fluid_params: torch.Tensor):        
+    def step(self, input: torch.Tensor, sim_params: torch.Tensor):        
         """
         x: (B, T, H, W, C)
-        fluid_params: (B, num_fluid_params)
+        sim_params: (B, num_sim_params)
         """
         assert input.dtype == torch.float32
-        assert fluid_params.dtype == torch.float32
+        assert sim_params.dtype == torch.float32
 
         x = input
         
@@ -187,7 +186,7 @@ class MoEBase(nn.Module):
         moe_outputs = []
         for idx, blk in enumerate(self.blocks):
             with record_function(f"block_{idx}"):
-               x, moe_output = blk(x, rotary_freqs, fluid_params)
+               x, moe_output = blk(x, rotary_freqs, sim_params)
                moe_outputs.append(moe_output)
         
         # Skip connections from patch embeddings
@@ -202,7 +201,7 @@ class MoEBase(nn.Module):
     def forward_trajectory(
         self, 
         initial_state: torch.Tensor, 
-        fluid_params: torch.Tensor,
+        sim_params: torch.Tensor,
         dx: float,
         input_time_window_size: int,
         output_time_window_size: int,
@@ -211,15 +210,15 @@ class MoEBase(nn.Module):
         return_moe_outputs: bool = False
     ):
         assert initial_state.dim() == 5, "initial state must be [B, T, H, W, C]"
-        assert fluid_params.dim() == 2, "fluid params must be [B, num_params]"
-        assert initial_state.shape[0] == fluid_params.shape[0]
+        assert sim_params.dim() == 2, "fluid params must be [B, num_params]"
+        assert initial_state.shape[0] == sim_params.shape[0]
         assert input_time_window_size == initial_state.shape[1]
 
         trajectory = initial_state.clone()
         trajectory_moe_outputs = [] if return_moe_outputs else None
 
         for _ in range(input_time_window_size, trajectory_steps, output_time_window_size):
-            pred, moe_outputs = self.step(trajectory[:, -input_time_window_size:], fluid_params)
+            pred, moe_outputs = self.step(trajectory[:, -input_time_window_size:], sim_params)
             output_time_window = pred[:, -output_time_window_size:]
             
             if use_sdf_reinit:

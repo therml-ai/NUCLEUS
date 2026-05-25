@@ -24,14 +24,14 @@ class NormalizerConstants:
     vely_mean: float
     vely_std: float
 
-    numeric_fluid_params_min: Optional[dict] = None
-    numeric_fluid_params_max: Optional[dict] = None
+    numeric_sim_params_min: Optional[dict] = None
+    numeric_sim_params_max: Optional[dict] = None
     
     def to_yaml_string(self) -> str:
         r"""
         This returns a YAML string that can be used as a config file for the normalizer.
         """
-        fluid_params_yaml = [
+        sim_params_yaml = [
             f"max_domain_size: {self.max_domain_size}",
             f"sdf_mean: {self.sdf_mean}",
             f"sdf_std: {self.sdf_std}",
@@ -44,15 +44,15 @@ class NormalizerConstants:
             f"vely_std: {self.vely_std}",
         ]
         
-        fmin = yaml.dump({"fluid_params_min": self.numeric_fluid_params_min}, default_flow_style=False) if self.numeric_fluid_params_min is not None else None
-        fmax = yaml.dump({"fluid_params_max": self.numeric_fluid_params_max}, default_flow_style=False) if self.numeric_fluid_params_max is not None else None
+        fmin = yaml.dump({"sim_params_min": self.numeric_sim_params_min}, default_flow_style=False) if self.numeric_sim_params_min is not None else None
+        fmax = yaml.dump({"sim_params_max": self.numeric_sim_params_max}, default_flow_style=False) if self.numeric_sim_params_max is not None else None
                 
         if fmin:
-            fluid_params_yaml.append(fmin)
+            sim_params_yaml.append(fmin)
         if fmax:
-            fluid_params_yaml.append(fmax)
+            sim_params_yaml.append(fmax)
         
-        return "\n".join(fluid_params_yaml)
+        return "\n".join(sim_params_yaml)
 
 def minmax_normalize(value: float, min: float, max: float) -> float:
     if min == max: return 0.0
@@ -108,15 +108,15 @@ class Normalizer:
     def __init__(self, constants: NormalizerConstants):
         self.constants = constants
         
-    def normalize_params(self, fluid_params_dicts: List[dict]) -> List[dict]:
+    def normalize_params(self, sim_params_dicts: List[dict]) -> List[dict]:
         return [
-            dict_normalize_helper(fluid_params_dict, minmax_normalize, self.constants.numeric_fluid_params_min, self.constants.numeric_fluid_params_max)
-            for fluid_params_dict in fluid_params_dicts 
+            dict_normalize_helper(sim_params_dict, minmax_normalize, self.constants.numeric_sim_params_min, self.constants.numeric_sim_params_max)
+            for sim_params_dict in sim_params_dicts 
         ]
-    def unnormalize_params(self, fluid_params_dicts: List[dict]) -> List[dict]:
+    def unnormalize_params(self, sim_params_dicts: List[dict]) -> List[dict]:
         return [
-            dict_normalize_helper(fluid_params_dict, minmax_unnormalize, self.constants.numeric_fluid_params_min, self.constants.numeric_fluid_params_max)
-            for fluid_params_dict in fluid_params_dicts
+            dict_normalize_helper(sim_params_dict, minmax_unnormalize, self.constants.numeric_sim_params_min, self.constants.numeric_sim_params_max)
+            for sim_params_dict in sim_params_dicts
         ]
 
     def normalize_temp(self, temp: torch.Tensor, bulk_temp: torch.Tensor) -> torch.Tensor:
@@ -204,11 +204,11 @@ class NoNormalizer(Normalizer):
     def unnormalize(self, data: torch.Tensor, bulk_temp: torch.Tensor) -> torch.Tensor:
         return data
     
-    def normalize_params(self, fluid_params_dicts: List[dict]) -> List[dict]:
-        return fluid_params_dicts
+    def normalize_params(self, sim_params_dicts: List[dict]) -> List[dict]:
+        return sim_params_dicts
     
-    def unnormalize_params(self, fluid_params_dicts: List[dict]) -> List[dict]:
-        return fluid_params_dicts
+    def unnormalize_params(self, sim_params_dicts: List[dict]) -> List[dict]:
+        return sim_params_dicts
     
 def get_normalizer(normalizer_cfg: dict) -> Normalizer:
     if normalizer_cfg["name"] == "standard":
@@ -223,8 +223,8 @@ def get_normalizer(normalizer_cfg: dict) -> Normalizer:
             velx_std=normalizer_cfg["velx_std"],
             vely_mean=normalizer_cfg["vely_mean"],
             vely_std=normalizer_cfg["vely_std"],
-            numeric_fluid_params_min=normalizer_cfg["fluid_params_min"],
-            numeric_fluid_params_max=normalizer_cfg["fluid_params_max"],
+            numeric_sim_params_min=normalizer_cfg["sim_params_min"],
+            numeric_sim_params_max=normalizer_cfg["sim_params_max"],
         )
         return StandardNormalizer(constants)
     if normalizer_cfg["name"] == "no":
@@ -289,8 +289,8 @@ def main(cfg: DictConfig):
     
     absmax_temp = float("-inf")
     max_domain_size = float("-inf")
-    fluid_params_min = None
-    fluid_params_max = None
+    sim_params_min = None
+    sim_params_max = None
     
     start_time = 300
     step_size = 100
@@ -307,9 +307,9 @@ def main(cfg: DictConfig):
             velx = f["velx"][start_time::step_size]
             vely = f["vely"][start_time::step_size]
         with open(train_path.replace(".hdf5", ".json"), "r") as f:
-            fluid_params_dict = json.load(f)
+            sim_params_dict = json.load(f)
         max_sdf = max(max_sdf, np.abs(sdf).max().item())
-        max_temp = max(max_temp, np.abs(temp).max().item() - fluid_params_dict["bulk_temp"])
+        max_temp = max(max_temp, np.abs(temp).max().item() - sim_params_dict["bulk_temp"])
         max_velx = max(max_velx, np.abs(velx).max().item())
         max_vely = max(max_vely, np.abs(vely).max().item())
     
@@ -327,28 +327,28 @@ def main(cfg: DictConfig):
             velx = f["velx"][start_time::step_size]
             vely = f["vely"][start_time::step_size]
         with open(train_path.replace(".hdf5", ".json"), "r") as f:
-            fluid_params_dict = json.load(f)
+            sim_params_dict = json.load(f)
         
-        x_size = fluid_params_dict["x_max"] - fluid_params_dict["x_min"]
-        y_size = fluid_params_dict["y_max"] - fluid_params_dict["y_min"]
+        x_size = sim_params_dict["x_max"] - sim_params_dict["x_min"]
+        y_size = sim_params_dict["y_max"] - sim_params_dict["y_min"]
         max_domain_size = max(x_size, y_size)
         
-        absmax_temp = max(absmax_temp, np.abs(temp).max() - fluid_params_dict["bulk_temp"])
+        absmax_temp = max(absmax_temp, np.abs(temp).max() - sim_params_dict["bulk_temp"])
         max_domain_size = max(max_domain_size, max_domain_size)
         
         sdf_running_variance.update(sdf)
-        temp_running_variance.update(temp - fluid_params_dict["bulk_temp"])
+        temp_running_variance.update(temp - sim_params_dict["bulk_temp"])
         velx_running_variance.update(velx)
         vely_running_variance.update(vely)
     
-        if fluid_params_min is None:
-            fluid_params_min = fluid_params_dict
+        if sim_params_min is None:
+            sim_params_min = sim_params_dict
         else:
-            fluid_params_min = nested_dict_min(fluid_params_min, fluid_params_dict)
-        if fluid_params_max is None:
-            fluid_params_max = fluid_params_dict
+            sim_params_min = nested_dict_min(sim_params_min, sim_params_dict)
+        if sim_params_max is None:
+            sim_params_max = sim_params_dict
         else:
-            fluid_params_max = nested_dict_max(fluid_params_max, fluid_params_dict)
+            sim_params_max = nested_dict_max(sim_params_max, sim_params_dict)
     
     constants = NormalizerConstants(
         max_domain_size=max_domain_size,
@@ -361,8 +361,8 @@ def main(cfg: DictConfig):
         velx_std=velx_running_variance.std(),
         vely_mean=vely_running_variance.mean(),
         vely_std=vely_running_variance.std(),
-        numeric_fluid_params_min=fluid_params_min,
-        numeric_fluid_params_max=fluid_params_max,
+        numeric_sim_params_min=sim_params_min,
+        numeric_sim_params_max=sim_params_max,
     )
     
     print(constants)
