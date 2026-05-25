@@ -58,6 +58,10 @@ conflicts = [
     { extra = "cu128" },
   ]
 ]
+environments = [
+    "sys_platform == 'linux'",
+    "sys_platform == 'darwin'",
+]
 
 [tool.uv.sources]
 torch = [
