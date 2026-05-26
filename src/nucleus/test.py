@@ -130,7 +130,7 @@ def run_test(cfg, model, normalizer, test_file_path: str, max_timesteps: int):
                         moe_output = []
                 else:
                     pred, moe_output = output
-            elelif isinstance(output, ScOTOutput):
+            elif isinstance(output, ScOTOutput):
                 pred = output.output.unsqueeze(1) # [B, 1, C, H, W]
                 moe_output = []
             else:
