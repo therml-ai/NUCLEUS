@@ -1,6 +1,7 @@
 # NUCLEUS
 
 [![NUCLEUS-Unit-Test-CPU](https://github.com/therml-ai/NUCLEUS/actions/workflows/main.yml/badge.svg)](https://github.com/therml-ai/NUCLEUS/actions/workflows/main.yml)
+[![NUCLEUS-DOI](https://zenodo.org/badge/1198954717.svg)](https://doi.org/10.5281/zenodo.20400966)
 
 
 | ![Subcooled poolboiling of FC-72 with a heater temperature at 97 degrees celsius](media/subcooled_poolboiing_fc72_97c.gif) |
