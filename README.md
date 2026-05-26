@@ -1,12 +1,10 @@
 <h1 align="center" style="margin:0;">
     NUCLEUS
 </h1>
-<br>
 
 <h3 align="center" style="margin: 0; margin-top: 0;">
     ML Surrogates for pool boiling
 </h3>
-<br>
 <p align="center">
   <a href="https://doi.org/10.5281/zenodo.20400967"><img src="https://zenodo.org/badge/DOI/10.5281/zenodo.20400967.svg" alt="DOI"></a>
   <a href="https://github.com/therml-ai/NUCLEUS/actions/workflows/main.yml"><img src="https://github.com/therml-ai/NUCLEUS/actions/workflows/main.yml/badge.svg" alt="Unit test action"></a>
@@ -18,6 +16,8 @@
         <figcaption>Sample trajectory for subcooled poolboiling of FC-72 with a heater temperature of 97 °C</figcaption>
     </div>
 </figure>
+<br>
+
 
 This repository contains the source code for NUCLEUS: an ML-based surrogate for simulations of two-phase heat transfer (boiling!). Two-phase heat-transfer is an extremely efficient form of cooling, but it's dynamics are not fully understood and massive a large design space. Typically, two-phase cooling systems are developed with numerical simulations and experimentation. The main issue with these is the time investment. High-fidelity simulations may require compute-days and experiments require manufacturing a cooling system and acquiring or developing different coolant liquids, etc.
 
