@@ -99,7 +99,7 @@ train_paths:
   - /share/crsp/lab/amowli/share/BubbleML_2_downsampled64_bicubic/PoolBoiling-Subcooled-LN2-2D/Twall_-164.hdf5
   - /share/crsp/lab/amowli/share/BubbleML_2_downsampled64_bicubic/PoolBoiling-Subcooled-LN2-2D/Twall_-166.hdf5
   # 168 has NaN values
-  #- /share/crsp/lab/amowli/share/BubbleML_2_downsampled64_bicubic/PoolBoiling-Subcooled-LN2-2D/Twall_-168.hdf5
+  #- /share/crsp/lab/amowli/share/BubbleML_2/PoolBoiling-Subcooled-LN2-2D/Twall_-168.hdf5
   - /share/crsp/lab/amowli/share/BubbleML_2_downsampled64_bicubic/PoolBoiling-Subcooled-LN2-2D/Twall_-170.hdf5
   - /share/crsp/lab/amowli/share/BubbleML_2_downsampled64_bicubic/PoolBoiling-Subcooled-LN2-2D/Twall_-172.hdf5
   - /share/crsp/lab/amowli/share/BubbleML_2_downsampled64_bicubic/PoolBoiling-Subcooled-LN2-2D/Twall_-174.hdf5
