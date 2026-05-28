@@ -19,7 +19,7 @@
 <br>
 
 
-This repository contains the source code for NUCLEUS: an ML-based surrogate for simulations of two-phase heat transfer (boiling!). Two-phase heat-transfer is an extremely efficient form of cooling, but it's dynamics are not fully understood and massive a large design space. Typically, two-phase cooling systems are developed with numerical simulations and experimentation. The main issue with these is the time investment. High-fidelity simulations may require compute-days and experiments require manufacturing a cooling system and acquiring or developing different coolant liquids, etc.
+This repository contains the source code for NUCLEUS: an ML-based surrogate for simulations of two-phase heat transfer (boiling!). Two-phase heat-transfer is an extremely efficient form of cooling, but it's dynamics are not fully understood and has a large design space. Typically, two-phase cooling systems are developed with numerical simulations and experimentation. The main issue with these is the time investment. High-fidelity simulations may require compute-days and experiments require manufacturing a cooling system and acquiring or developing different coolant liquids, etc.
 
 We are exploring surrogates as approximate models of boiling that can be used to more rapidly evaluate cooling efficiency for different configurations of different fluid parameters, heater temperatures, and liquid temperatures. Current work focuses on nucleate pool boiling, with future work planned to expand this scope.
 
