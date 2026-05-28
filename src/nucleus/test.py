@@ -7,7 +7,6 @@ from nucleus.data import ForecastDataset, InMemForecastDataset
 from nucleus.data.layout import convert_layout
 from nucleus.layers.moe.topk_moe import TopkMoEOutput
 from nucleus.utils.physical_metrics import PhysicalMetrics, BubbleMetrics, physical_metrics, bubble_metrics
-from nucleus.utils.sdf_reinit import sdf_reinit_sussman
 from nucleus.baseline.poseidon import ScOTOutput
 from nucleus.baseline.moe_dpot import MoEPOTNet
 

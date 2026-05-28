@@ -8,11 +8,13 @@ import joblib
 import pathlib
 from typing import List
 import pandas as pd
+import hydra
+from omegaconf import DictConfig
 
 def plot_rollout_moe_overlay(
     filename: str,
     rollout: torch.Tensor,
-    test_results: TestResults,
+    test_results: TestResults
 ):
     def make_plot(rollout):
         # moe_outputs is a List[List[TopkMoEOutput]], since for each timestep we store the moe outputs for every layer.
@@ -134,19 +136,19 @@ def plot_routing_heatmap(
     plt.colorbar(im, ax=axs[-1], label="Routing Percentage", cmap="rocket", pad=0.05, fraction=0.04)
     plt.savefig(filename, bbox_inches="tight")
     plt.close()
-    
-if __name__ == "__main__":
-    
-    root_dir = pathlib.Path("/pub/afeeney/bubbleformer_logs/neighbor_moe_poolboiling64_48037580/checkpoints/inference_rollouts")
+
+@hydra.main(version_base=None, config_path="../config", config_name="default")
+def main(cfg: DictConfig):
+    root_dir = pathlib.Path(f"{cfg.log_dir}/neighbor_moe_poolboiling64_48037580/checkpoints/inference_rollouts")
     test_results = torch.load(root_dir / "test_results.pt", weights_only=False)
 
     for test_result in test_results:
         save_filename = root_dir / f"moe_{test_result.case_name}.pdf"
         plot_rollout_moe_overlay(
             filename=save_filename,
-             rollout=test_result.preds,
-            test_results=test_result,
-       )
+            rollout=test_result.preds,
+            test_results=test_result
+    )
     #plot_routing_bar_chart(
     #    filename=root_dir / "routing.pdf",
     #    test_results=test_results
@@ -155,3 +157,6 @@ if __name__ == "__main__":
     #    filename=root_dir / "routing_heatmap.pdf",
     #    test_results=test_results
     #)
+    
+if __name__ == "__main__":
+    main()

@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
 import seaborn as sns
 import torch
+import hydra
+from omegaconf import DictConfig
 
 def pretty_name(case_name: str):
     parts = case_name.split("_")
@@ -13,16 +15,17 @@ def pretty_name(case_name: str):
 def filter_sat(test_results):
     return [t for t in test_results if "sub" in t.case_name]
 
-def latex():
+@hydra.main(version_base=None, config_path="../config", config_name="default")
+def latex(cfg: DictConfig):
     checkpoints = {
-        "Neighbor MoE": "/pub/afeeney/bubbleformer_logs/neighbor_moe_poolboiling64_48105352/checkpoints/inference_rollouts/test_one_step.pt",
-        "Neighbor MLP": "/pub/afeeney/bubbleformer_logs/neighbor_vit_poolboiling64_48103654/checkpoints/inference_rollouts/test_one_step.pt",
-        "Axial MoE": "/pub/afeeney/bubbleformer_logs/axial_moe_poolboiling64_48103671/checkpoints/inference_rollouts/test_one_step.pt",
-        "Axial MLP": "/pub/afeeney/bubbleformer_logs/axial_vit_poolboiling64_48103668/checkpoints/inference_rollouts/test_one_step.pt",
-        "Global MoE": "/pub/afeeney/bubbleformer_logs/vit_moe_poolboiling64_48103688/checkpoints/inference_rollouts/test_one_step.pt",
-        "Global MLP": "/pub/afeeney/bubbleformer_logs/vit_poolboiling64_48103690/checkpoints/inference_rollouts/test_one_step.pt",
-        "BubbleFormer 1": "/pub/afeeney/bubbleformer_logs/bubbleformer_film_vit_poolboiling64_48105033/checkpoints/inference_rollouts/test_one_step.pt",
-        "BubbleFormer 2": "/pub/afeeney/bubbleformer_logs/bubbleformer_film_vit_poolboiling64_48105034/checkpoints/inference_rollouts/test_one_step.pt",
+        "Neighbor MoE": f"{cfg.log_dir}/neighbor_moe_poolboiling64_48105352/checkpoints/inference_rollouts/test_one_step.pt",
+        "Neighbor MLP": f"{cfg.log_dir}/neighbor_vit_poolboiling64_48103654/checkpoints/inference_rollouts/test_one_step.pt",
+        "Axial MoE": f"{cfg.log_dir}/axial_moe_poolboiling64_48103671/checkpoints/inference_rollouts/test_one_step.pt",
+        "Axial MLP": f"{cfg.log_dir}/axial_vit_poolboiling64_48103668/checkpoints/inference_rollouts/test_one_step.pt",
+        "Global MoE": f"{cfg.log_dir}/vit_moe_poolboiling64_48103688/checkpoints/inference_rollouts/test_one_step.pt",
+        "Global MLP": f"{cfg.log_dir}/vit_poolboiling64_48103690/checkpoints/inference_rollouts/test_one_step.pt",
+        "BubbleFormer 1": f"{cfg.log_dir}/bubbleformer_film_vit_poolboiling64_48105033/checkpoints/inference_rollouts/test_one_step.pt",
+        "BubbleFormer 2": f"{cfg.log_dir}/bubbleformer_film_vit_poolboiling64_48105034/checkpoints/inference_rollouts/test_one_step.pt",
     }
 
     print(r"\begin{table}")
@@ -57,4 +60,5 @@ def latex():
     print(r"\end{tabular}")
     print(r"\end{table}")
     
-latex()
+if __name__ == "__main__":
+    latex()

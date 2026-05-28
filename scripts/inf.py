@@ -29,6 +29,9 @@ def main(cfg: DictConfig):
 
     model_name = cfg.model_cfg.name
 
+    # model_kwargs = OmegaConf.to_container(cfg.model_cfg.params, resolve=True)
+
+
     model_kwargs = {
         "input_fields": 4,
         "output_fields": 4,
@@ -45,10 +48,11 @@ def main(cfg: DictConfig):
         model_kwargs["num_experts"] = cfg.model_cfg.params.num_experts
         model_kwargs["topk"] = cfg.model_cfg.params.topk
 
+
     model = get_model(model_name, **model_kwargs)
     model = model.to(device)
     model_data = torch.load(cfg.checkpoint_path, map_location=device, weights_only=False)
-        
+            
     weight_state_dict = OrderedDict()
     for key, val in model_data["state_dict"].items():
         print(key, val.shape)
@@ -60,6 +64,7 @@ def main(cfg: DictConfig):
     del model_data
     model.load_state_dict(weight_state_dict)
     model.eval()
+
 
     normalizer = get_normalizer(OmegaConf.to_container(cfg.normalizer_cfg, resolve=True))
     
@@ -74,10 +79,10 @@ def main(cfg: DictConfig):
         save_dir = save_root / f"{test_results.case_name}"
         save_dir.mkdir(parents=True, exist_ok=True)
         plot_rollout(
-            save_dir=save_dir,
-            rollout=test_results.preds,
-            test_results=test_results,
-            step_size=5,
+           save_dir=save_dir,
+           rollout=test_results.preds,
+           test_results=test_results,
+           step_size=5,
             include_ground_truth=True,
         )
         plot_distribution(

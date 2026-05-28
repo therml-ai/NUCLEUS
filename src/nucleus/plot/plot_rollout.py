@@ -2,6 +2,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import torch
 from scipy.stats import wasserstein_distance
+import hydra
+from omegaconf import DictConfig
 
 def pretty_name(case_name: str):
     parts = case_name.split("_")
@@ -61,14 +63,16 @@ def plot_vel_dist(ax, preds, targets):
     ax.fill_between(target_hist.bin_edges[:-1], target_hist.hist, alpha=0.5)
     ax.set_title(f"EMD: {emd:.4f}")
     
-def temp_figs():
+#let's call it main lol
+@hydra.main(version_base=None, config_path="../config", config_name="default")
+def temp_figs(cfg: DictConfig):
     checkpoints = {
-        "Neighbor MoE": "/pub/afeeney/bubbleformer_logs/neighbor_moe_poolboiling64_48105352/checkpoints/inference_rollouts/test_results.pt",
-        "Neighbor MLP": "/pub/afeeney/bubbleformer_logs/neighbor_vit_poolboiling64_48103654/checkpoints/inference_rollouts/test_results.pt",
-        #"Axial MoE": "/pub/afeeney/bubbleformer_logs/axial_moe_poolboiling64_48103671/checkpoints/inference_rollouts/test_results_clip_boiling_point.pt",
-        #"Axial MLP": "/pub/afeeney/bubbleformer_logs/axial_vit_poolboiling64_48103668/checkpoints/inference_rollouts/test_results_clip_boiling_point.pt",
-        #"Global MoE": "/pub/afeeney/bubbleformer_logs/vit_moe_poolboiling64_48103688/checkpoints/inference_rollouts/test_results_clip_boiling_point.pt",
-        #"Global MLP": "/pub/afeeney/bubbleformer_logs/vit_poolboiling64_48103690/checkpoints/inference_rollouts/test_results_clip_boiling_point.pt",
+        "Neighbor MoE": f"{cfg.log_dir}/neighbor_moe_poolboiling64_48105352/checkpoints/inference_rollouts/test_results.pt",
+        "Neighbor MLP": f"{cfg.log_dir}/neighbor_vit_poolboiling64_48103654/checkpoints/inference_rollouts/test_results.pt",
+        #"Axial MoE": f"{cfg.log_dir}/axial_moe_poolboiling64_48103671/checkpoints/inference_rollouts/test_results_clip_boiling_point.pt",
+        #"Axial MLP": f"{cfg.log_dir}/axial_vit_poolboiling64_48103668/checkpoints/inference_rollouts/test_results_clip_boiling_point.pt",
+        #"Global MoE": f"{cfg.log_dir}/vit_moe_poolboiling64_48103688/checkpoints/inference_rollouts/test_results_clip_boiling_point.pt",
+        #"Global MLP": f"{cfg.log_dir}/vit_poolboiling64_48103690/checkpoints/inference_rollouts/test_results_clip_boiling_point.pt",
     }
 
     fig, ax = plt.subplots(2 * len(checkpoints), 6, figsize=(10, 5), layout="constrained")
@@ -104,4 +108,5 @@ def temp_figs():
     plt.savefig("sub_dist.pdf", bbox_inches="tight")
     plt.close()
 
-temp_figs()
+if __name__ == "__main__":
+    temp_figs()
