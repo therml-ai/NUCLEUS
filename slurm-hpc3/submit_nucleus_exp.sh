@@ -18,10 +18,10 @@ export PYTHONPYCACHE_DIR=$TMPDIR/pycache/
 # 3. --extra just gets stuff in pyproject.toml optional-dependencies
 uv sync --no-cache --active --extra cu128
 uv pip install -e .
-uv pip install natten==0.21.5+torch2100cu128 -f https://whl.natten.org
 
 python scripts/train.py \
     model_cfg=neighbor_moe/neighbor_moe_exp \
     data_cfg=poolboiling \
     normalizer_cfg=standard \
-    model_cfg.params.patch_size=16 \
+    model_cfg.params.patch_size=16
+

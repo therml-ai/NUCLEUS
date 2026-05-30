@@ -2,14 +2,26 @@ version = 1
 revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
-    "python_full_version >= '3.14' and sys_platform == 'linux'",
-    "python_full_version < '3.14' and sys_platform == 'linux'",
-    "python_full_version >= '3.14' and sys_platform == 'darwin'",
-    "python_full_version < '3.14' and sys_platform == 'darwin'",
-]
-supported-markers = [
-    "sys_platform == 'linux'",
-    "sys_platform == 'darwin'",
+    "python_full_version >= '3.14' and sys_platform == 'win32' and extra != 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128'",
+    "python_full_version >= '3.14' and sys_platform == 'emscripten' and extra != 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128'",
+    "python_full_version >= '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128'",
+    "python_full_version < '3.14' and sys_platform == 'win32' and extra != 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128'",
+    "python_full_version < '3.14' and sys_platform == 'emscripten' and extra != 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128'",
+    "python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128'",
+    "python_full_version >= '3.14' and sys_platform == 'win32' and extra == 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128'",
+    "python_full_version >= '3.14' and sys_platform == 'emscripten' and extra == 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128'",
+    "python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128'",
+    "python_full_version < '3.14' and sys_platform == 'win32' and extra == 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128'",
+    "python_full_version < '3.14' and sys_platform == 'emscripten' and extra == 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128'",
+    "python_full_version < '3.14' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128'",
+    "python_full_version >= '3.14' and sys_platform == 'darwin' and extra == 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128'",
+    "python_full_version < '3.14' and sys_platform == 'darwin' and extra == 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128'",
+    "python_full_version >= '3.14' and sys_platform == 'win32' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128'",
+    "python_full_version >= '3.14' and sys_platform == 'emscripten' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128'",
+    "python_full_version >= '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128'",
+    "python_full_version < '3.14' and sys_platform == 'win32' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128'",
+    "python_full_version < '3.14' and sys_platform == 'emscripten' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128'",
+    "python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128'",
 ]
 conflicts = [[
     { package = "nucleus", extra = "cpu" },
@@ -30,13 +42,13 @@ name = "aiohttp"
 version = "3.13.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "aiohappyeyeballs", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "aiosignal", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "attrs", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "frozenlist", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "multidict", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "propcache", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "yarl", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "aiohappyeyeballs" },
+    { name = "aiosignal" },
+    { name = "attrs" },
+    { name = "frozenlist" },
+    { name = "multidict" },
+    { name = "propcache" },
+    { name = "yarl" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/77/9a/152096d4808df8e4268befa55fba462f440f14beab85e8ad9bf990516918/aiohttp-3.13.5.tar.gz", hash = "sha256:9d98cc980ecc96be6eb4c1994ce35d28d8b1f5e5208a23b421187d1209dbb7d1", size = 7858271, upload-time = "2026-03-31T22:01:03.343Z" }
 wheels = [
@@ -115,8 +127,8 @@ name = "aiosignal"
 version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "frozenlist", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "typing-extensions", marker = "(python_full_version < '3.13' and sys_platform == 'darwin') or (python_full_version < '3.13' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128') or (sys_platform == 'darwin' and extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "frozenlist" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/61/62/06741b579156360248d1ec624842ad0edf697050bbaf7c3e46394e106ad1/aiosignal-1.4.0.tar.gz", hash = "sha256:f47eecd9468083c2029cc99945502cb7708b082c232f9aca65da147157b251c7", size = 25007, upload-time = "2025-07-03T22:54:43.528Z" }
 wheels = [
@@ -152,12 +164,12 @@ name = "black"
 version = "26.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "click", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "mypy-extensions", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "pathspec", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "platformdirs", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "pytokens", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "click" },
+    { name = "mypy-extensions" },
+    { name = "packaging" },
+    { name = "pathspec" },
+    { name = "platformdirs" },
+    { name = "pytokens" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e1/c5/61175d618685d42b005847464b8fb4743a67b1b8fdb75e50e5a96c31a27a/black-26.3.1.tar.gz", hash = "sha256:2c50f5063a9641c7eed7795014ba37b0f5fa227f3d408b968936e24bc0566b07", size = 666155, upload-time = "2026-03-12T03:36:03.593Z" }
 wheels = [
@@ -265,9 +277,21 @@ wheels = [
 name = "click"
 version = "8.3.1"
 source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+]
 sdist = { url = "https://files.pythonhosted.org/packages/3d/fa/656b739db8587d7b5dfa22e22ed02566950fbfbcdc20311993483657a5c0/click-8.3.1.tar.gz", hash = "sha256:12ff4785d337a1bb490bb7e9c2b1ee5da3112e94a8622f26a6c77f5d2fc6842a", size = 295065, upload-time = "2025-11-15T20:45:42.706Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/98/78/01c019cdb5d6498122777c1a43056ebb3ebfeef2076d9d026bfe15583b2b/click-8.3.1-py3-none-any.whl", hash = "sha256:981153a64e25f12d547d3426c367a4857371575ee7ad18df2a6183ab0545b2a6", size = 108274, upload-time = "2025-11-15T20:45:41.139Z" },
+]
+
+[[package]]
+name = "colorama"
+version = "0.4.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d8/53/6f443c9a4a8358a93a6792e2acffb9d9d5cb0a5cfd8802644b7b1c9a02e4/colorama-0.4.6.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44", size = 27697, upload-time = "2022-10-25T02:36:22.414Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6", size = 25335, upload-time = "2022-10-25T02:36:20.889Z" },
 ]
 
 [[package]]
@@ -275,7 +299,7 @@ name = "contourpy"
 version = "1.3.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "numpy" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/58/01/1253e6698a07380cd31a736d248a3f2a50a7c88779a1813da27503cadc2a/contourpy-1.3.3.tar.gz", hash = "sha256:083e12155b210502d0bca491432bb04d56dc3432f95a979b429f2848c3dbe880", size = 13466174, upload-time = "2025-07-26T12:03:12.549Z" }
 wheels = [
@@ -341,7 +365,7 @@ name = "cuda-bindings"
 version = "12.9.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cuda-pathfinder", marker = "(sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "cuda-pathfinder", marker = "(sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0c/c2/65bfd79292b8ff18be4dd7f7442cea37bcbc1a228c1886f1dea515c45b67/cuda_bindings-12.9.4-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:694ba35023846625ef471257e6b5a4bc8af690f961d197d77d34b1d1db393f56", size = 11760260, upload-time = "2025-10-21T14:51:40.79Z" },
@@ -537,7 +561,7 @@ wheels = [
 
 [package.optional-dependencies]
 http = [
-    { name = "aiohttp", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "aiohttp" },
 ]
 
 [[package]]
@@ -545,7 +569,7 @@ name = "gitdb"
 version = "4.0.12"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "smmap", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "smmap" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/72/94/63b0fc47eb32792c7ba1fe1b694daec9a63620db1e313033d18140c2320a/gitdb-4.0.12.tar.gz", hash = "sha256:5ef71f855d191a3326fcfbc0d5da835f26b13fbcba60c32c21091c349ffdb571", size = 394684, upload-time = "2025-01-02T07:20:46.413Z" }
 wheels = [
@@ -557,7 +581,7 @@ name = "gitpython"
 version = "3.1.46"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "gitdb", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "gitdb" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/df/b5/59d16470a1f0dfe8c793f9ef56fd3826093fc52b3bd96d6b9d6c26c7e27b/gitpython-3.1.46.tar.gz", hash = "sha256:400124c7d0ef4ea03f7310ac2fbf7151e09ff97f2a3288d64a440c584a29c37f", size = 215371, upload-time = "2026-01-01T15:37:32.073Z" }
 wheels = [
@@ -569,7 +593,7 @@ name = "h5py"
 version = "3.16.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "numpy" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/db/33/acd0ce6863b6c0d7735007df01815403f5589a21ff8c2e1ee2587a38f548/h5py-3.16.0.tar.gz", hash = "sha256:a0dbaad796840ccaa67a4c144a0d0c8080073c34c76d5a6941d6818678ef2738", size = 446526, upload-time = "2026-03-06T13:49:08.07Z" }
 wheels = [
@@ -644,14 +668,14 @@ name = "huggingface-hub"
 version = "0.36.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "filelock", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "fsspec", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "hf-xet", marker = "(platform_machine == 'aarch64' and sys_platform == 'darwin') or (platform_machine == 'amd64' and sys_platform == 'darwin') or (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'x86_64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'amd64' and sys_platform == 'linux') or (platform_machine == 'arm64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128') or (sys_platform == 'darwin' and extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "pyyaml", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "requests", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "tqdm", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "typing-extensions", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "filelock" },
+    { name = "fsspec" },
+    { name = "hf-xet", marker = "platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "packaging" },
+    { name = "pyyaml" },
+    { name = "requests" },
+    { name = "tqdm" },
+    { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/7c/b7/8cb61d2eece5fb05a83271da168186721c450eb74e3c31f7ef3169fa475b/huggingface_hub-0.36.2.tar.gz", hash = "sha256:1934304d2fb224f8afa3b87007d58501acfda9215b334eed53072dd5e815ff7a", size = 649782, upload-time = "2026-02-06T09:24:13.098Z" }
 wheels = [
@@ -663,9 +687,9 @@ name = "hydra-core"
 version = "1.3.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "antlr4-python3-runtime", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "omegaconf", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "antlr4-python3-runtime" },
+    { name = "omegaconf" },
+    { name = "packaging" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/6d/8e/07e42bc434a847154083b315779b0a81d567154504624e181caf2c71cd98/hydra-core-1.3.2.tar.gz", hash = "sha256:8a878ed67216997c3e9d88a8e72e7b4767e81af37afb4ea3334b269a4390a824", size = 3263494, upload-time = "2023-02-23T18:33:43.03Z" }
 wheels = [
@@ -686,8 +710,8 @@ name = "imageio"
 version = "2.37.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "pillow", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "numpy" },
+    { name = "pillow" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/b1/84/93bcd1300216ea50811cee96873b84a1bebf8d0489ffaf7f2a3756bab866/imageio-2.37.3.tar.gz", hash = "sha256:bbb37efbfc4c400fcd534b367b91fcd66d5da639aaa138034431a1c5e0a41451", size = 389673, upload-time = "2026-03-09T11:31:12.573Z" }
 wheels = [
@@ -714,7 +738,7 @@ name = "jinja2"
 version = "3.1.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "markupsafe", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "markupsafe" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/df/bf/f7da0350254c0ed7c72f3e33cef02e048281fec7ecec5f032d4aac52226b/jinja2-3.1.6.tar.gz", hash = "sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d", size = 245115, upload-time = "2025-03-05T20:05:02.478Z" }
 wheels = [
@@ -821,7 +845,7 @@ name = "lazy-loader"
 version = "0.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "packaging" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/49/ac/21a1f8aa3777f5658576777ea76bfb124b702c520bbe90edf4ae9915eafa/lazy_loader-0.5.tar.gz", hash = "sha256:717f9179a0dbed357012ddad50a5ad3d5e4d9a0b8712680d4e687f5e6e6ed9b3", size = 15294, upload-time = "2026-03-06T15:45:09.054Z" }
 wheels = [
@@ -833,18 +857,18 @@ name = "lightning"
 version = "2.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "fsspec", extra = ["http"], marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "lightning-utilities", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "pytorch-lightning", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "pyyaml", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "fsspec", extra = ["http"] },
+    { name = "lightning-utilities" },
+    { name = "packaging" },
+    { name = "pytorch-lightning" },
+    { name = "pyyaml" },
     { name = "torch", version = "2.10.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torch", version = "2.10.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torch", version = "2.10.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torchmetrics", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "tqdm", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "typing-extensions", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128') or (extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128')" },
+    { name = "torch", version = "2.10.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "torch", version = "2.10.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "extra == 'extra-7-nucleus-cu128'" },
+    { name = "torchmetrics" },
+    { name = "tqdm" },
+    { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/15/ad/a1c91a795521be252209d45fb080f28a4f1e7244d3b37121fcc6e3e43034/lightning-2.6.1.tar.gz", hash = "sha256:859104b98c61add6fe60d0c623abf749baf25f2950a66ebdfb4bd18aa7decba9", size = 663175, upload-time = "2026-01-30T14:59:13.92Z" }
 wheels = [
@@ -856,8 +880,8 @@ name = "lightning-utilities"
 version = "0.15.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "typing-extensions", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "packaging" },
+    { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/f1/45/7fa8f56b17dc0f0a41ec70dd307ecd6787254483549843bef4c30ab5adce/lightning_utilities-0.15.3.tar.gz", hash = "sha256:792ae0204c79f6859721ac7f386c237a33b0ed06ba775009cb894e010a842033", size = 33553, upload-time = "2026-02-22T14:48:53.348Z" }
 wheels = [
@@ -870,9 +894,9 @@ version = "0.2.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "torch", version = "2.10.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torch", version = "2.10.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torch", version = "2.10.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128') or (extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128')" },
+    { name = "torch", version = "2.10.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "torch", version = "2.10.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "extra == 'extra-7-nucleus-cu128'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/70/69/d655dc09ba401640f3d94121b7c6e984ce9db6450b2806659709bfabe61c/lion_pytorch-0.2.4.tar.gz", hash = "sha256:b5f32dfa727cc61aa63522b3392d0902d2743e2eae6b3b71a34fb11a62f9bc23", size = 7798, upload-time = "2026-03-04T15:42:25.085Z" }
 wheels = [
@@ -884,7 +908,7 @@ name = "markdown-it-py"
 version = "4.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "mdurl", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "mdurl" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/5b/f5/4ec618ed16cc4f8fb3b701563655a69816155e79e24a17b651541804721d/markdown_it_py-4.0.0.tar.gz", hash = "sha256:cb0a2b4aa34f932c007117b194e945bd74e0ec24133ceb5bac59009cda1cb9f3", size = 73070, upload-time = "2025-08-11T12:57:52.854Z" }
 wheels = [
@@ -959,15 +983,15 @@ name = "matplotlib"
 version = "3.10.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "contourpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "cycler", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "fonttools", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "kiwisolver", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "pillow", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "pyparsing", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "python-dateutil", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "contourpy" },
+    { name = "cycler" },
+    { name = "fonttools" },
+    { name = "kiwisolver" },
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "pillow" },
+    { name = "pyparsing" },
+    { name = "python-dateutil" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/8a/76/d3c6e3a13fe484ebe7718d14e269c9569c4eb0020a968a327acb3b9a8fe6/matplotlib-3.10.8.tar.gz", hash = "sha256:2299372c19d56bcd35cf05a2738308758d32b9eaed2371898d8f5bd33f084aa3", size = 34806269, upload-time = "2025-12-10T22:56:51.155Z" }
 wheels = [
@@ -1136,8 +1160,43 @@ wheels = [
 
 [[package]]
 name = "natten"
+version = "0.21.5+torch2100cu128"
+source = { registry = "https://whl.natten.org/" }
+resolution-markers = [
+    "python_full_version >= '3.14' and sys_platform == 'win32'",
+    "python_full_version >= '3.14' and sys_platform == 'emscripten'",
+    "python_full_version >= '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version < '3.14' and sys_platform == 'win32'",
+    "python_full_version < '3.14' and sys_platform == 'emscripten'",
+    "python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+]
+wheels = [
+    { url = "https://github.com/SHI-Labs/NATTEN/releases/download/v0.21.5/natten-0.21.5%2Btorch2100cu128-cp312-cp312-linux_aarch64.whl" },
+    { url = "https://github.com/SHI-Labs/NATTEN/releases/download/v0.21.5/natten-0.21.5%2Btorch2100cu128-cp312-cp312-linux_x86_64.whl" },
+    { url = "https://github.com/SHI-Labs/NATTEN/releases/download/v0.21.5/natten-0.21.5%2Btorch2100cu128-cp313-cp313-linux_aarch64.whl" },
+    { url = "https://github.com/SHI-Labs/NATTEN/releases/download/v0.21.5/natten-0.21.5%2Btorch2100cu128-cp313-cp313-linux_x86_64.whl" },
+    { url = "https://github.com/SHI-Labs/NATTEN/releases/download/v0.21.5/natten-0.21.5%2Btorch2100cu128-cp313-cp313t-linux_aarch64.whl" },
+    { url = "https://github.com/SHI-Labs/NATTEN/releases/download/v0.21.5/natten-0.21.5%2Btorch2100cu128-cp313-cp313t-linux_x86_64.whl" },
+    { url = "https://github.com/SHI-Labs/NATTEN/releases/download/v0.21.5/natten-0.21.5%2Btorch2100cu128-cp314-cp314-linux_aarch64.whl" },
+    { url = "https://github.com/SHI-Labs/NATTEN/releases/download/v0.21.5/natten-0.21.5%2Btorch2100cu128-cp314-cp314-linux_x86_64.whl" },
+    { url = "https://github.com/SHI-Labs/NATTEN/releases/download/v0.21.5/natten-0.21.5%2Btorch2100cu128-cp314-cp314t-linux_aarch64.whl" },
+    { url = "https://github.com/SHI-Labs/NATTEN/releases/download/v0.21.5/natten-0.21.5%2Btorch2100cu128-cp314-cp314t-linux_x86_64.whl" },
+]
+
+[[package]]
+name = "natten"
 version = "0.21.6"
 source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.14' and sys_platform == 'win32'",
+    "python_full_version >= '3.14' and sys_platform == 'emscripten'",
+    "python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version < '3.14' and sys_platform == 'win32'",
+    "python_full_version < '3.14' and sys_platform == 'emscripten'",
+    "python_full_version < '3.14' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version >= '3.14' and sys_platform == 'darwin'",
+    "python_full_version < '3.14' and sys_platform == 'darwin'",
+]
 sdist = { url = "https://files.pythonhosted.org/packages/06/2f/e10aa0edfa2e203fc649a4a52ed9e946decc16824f4740cf61d85a7f9a88/natten-0.21.6.tar.gz", hash = "sha256:c26871225fa533f8a9433ccd4496e3c4dcf6d0e0da369a2f6b547d4321a25dc1", size = 2863866, upload-time = "2026-04-14T18:15:50.885Z" }
 
 [[package]]
@@ -1154,46 +1213,6 @@ name = "nucleus"
 version = "0.0.0"
 source = { editable = "." }
 dependencies = [
-    { name = "black", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "einops", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "h5py", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "hydra-core", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "imgcat", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "joblib", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "lightning", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "lion-pytorch", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "matplotlib", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "opencv-python", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "pytest", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "rich", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "rotary-embedding-torch", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "scikit-image", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "scipy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "seaborn", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "timm", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "wandb", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-]
-
-[package.optional-dependencies]
-cpu = [
-    { name = "natten", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "torch", version = "2.10.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torch", version = "2.10.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torchvision", version = "0.25.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torchvision", version = "0.25.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-]
-cu128 = [
-    { name = "torch", version = "2.10.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "torchvision", version = "0.25.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-]
-poseidon = [
-    { name = "transformers", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "black" },
     { name = "einops" },
     { name = "h5py" },
     { name = "hydra-core" },
@@ -1202,24 +1221,74 @@ requires-dist = [
     { name = "lightning" },
     { name = "lion-pytorch" },
     { name = "matplotlib" },
-    { name = "natten", marker = "extra == 'cpu'" },
     { name = "numpy" },
     { name = "opencv-python" },
-    { name = "pytest" },
     { name = "rich" },
     { name = "rotary-embedding-torch" },
     { name = "scikit-image" },
     { name = "scipy" },
     { name = "seaborn" },
     { name = "timm" },
-    { name = "torch", marker = "extra == 'cpu'", specifier = "==2.10.0", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "nucleus", extra = "cpu" } },
-    { name = "torch", marker = "extra == 'cu128'", specifier = "==2.10.0", index = "https://download.pytorch.org/whl/cu128", conflict = { package = "nucleus", extra = "cu128" } },
-    { name = "torchvision", marker = "extra == 'cpu'", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "nucleus", extra = "cpu" } },
-    { name = "torchvision", marker = "extra == 'cu128'", index = "https://download.pytorch.org/whl/cu128", conflict = { package = "nucleus", extra = "cu128" } },
-    { name = "transformers", marker = "extra == 'poseidon'", specifier = "==4.35.2" },
     { name = "wandb" },
 ]
+
+[package.optional-dependencies]
+cpu = [
+    { name = "natten", version = "0.21.6", source = { registry = "https://pypi.org/simple" } },
+    { name = "torch", version = "2.10.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "torch", version = "2.10.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "torchvision", version = "0.25.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "torchvision", version = "0.25.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+]
+cu128 = [
+    { name = "natten", version = "0.21.5+torch2100cu128", source = { registry = "https://whl.natten.org/" } },
+    { name = "torch", version = "2.10.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" } },
+    { name = "torchvision", version = "0.25.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" } },
+]
+poseidon = [
+    { name = "transformers" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "black" },
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "einops", specifier = ">=0.8.2" },
+    { name = "h5py", specifier = ">=3.16.0,<4" },
+    { name = "hydra-core", specifier = ">=1.3.2,<2" },
+    { name = "imgcat", specifier = ">=0.6.0" },
+    { name = "joblib", specifier = ">=1.5.3,<2" },
+    { name = "lightning", specifier = ">=2.6.1,<3" },
+    { name = "lion-pytorch", specifier = ">=0.2.4" },
+    { name = "matplotlib", specifier = ">=3.10.8,<4" },
+    { name = "natten", marker = "extra == 'cpu'", specifier = ">=0.21.6" },
+    { name = "natten", marker = "extra == 'cu128'", specifier = "==0.21.5+torch2100cu128", index = "https://whl.natten.org/", conflict = { package = "nucleus", extra = "cu128" } },
+    { name = "numpy", specifier = ">=2.4.4,<3" },
+    { name = "opencv-python", specifier = ">=4.13.0.92,<5" },
+    { name = "rich", specifier = ">=14.3.3,<15" },
+    { name = "rotary-embedding-torch", specifier = ">=0.8.9" },
+    { name = "scikit-image", specifier = ">=0.26.0" },
+    { name = "scipy", specifier = ">=1.17.1,<2" },
+    { name = "seaborn", specifier = ">=0.13.2" },
+    { name = "timm", specifier = ">=1.0.26,<2" },
+    { name = "torch", marker = "extra == 'cpu'", specifier = ">=2.10.0,<3", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "nucleus", extra = "cpu" } },
+    { name = "torch", marker = "extra == 'cu128'", specifier = "==2.10.0", index = "https://download.pytorch.org/whl/cu128", conflict = { package = "nucleus", extra = "cu128" } },
+    { name = "torchvision", marker = "extra == 'cpu'", specifier = ">=0.25.0", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "nucleus", extra = "cpu" } },
+    { name = "torchvision", marker = "extra == 'cu128'", specifier = "==0.25.0", index = "https://download.pytorch.org/whl/cu128", conflict = { package = "nucleus", extra = "cu128" } },
+    { name = "transformers", marker = "extra == 'poseidon'", specifier = "==4.35.2" },
+    { name = "wandb", specifier = ">=0.25.1" },
+]
 provides-extras = ["cpu", "cu128", "poseidon"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "black" },
+    { name = "pytest" },
+]
 
 [[package]]
 name = "numpy"
@@ -1327,7 +1396,7 @@ name = "nvidia-cudnn-cu12"
 version = "9.10.2.21"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12", marker = "(sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "nvidia-cublas-cu12", marker = "(sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fa/41/e79269ce215c857c935fd86bcfe91a451a584dfc27f1e068f568b9ad1ab7/nvidia_cudnn_cu12-9.10.2.21-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:c9132cc3f8958447b4910a1720036d9eff5928cc3179b0a51fb6d167c6cc87d8", size = 705026878, upload-time = "2025-06-06T21:52:51.348Z" },
@@ -1340,7 +1409,7 @@ name = "nvidia-cufft-cu12"
 version = "11.3.3.83"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12", marker = "(sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/60/bc/7771846d3a0272026c416fbb7e5f4c1f146d6d80704534d0b187dd6f4800/nvidia_cufft_cu12-11.3.3.83-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:848ef7224d6305cdb2a4df928759dca7b1201874787083b6e7550dd6765ce69a", size = 193109211, upload-time = "2025-03-07T01:44:56.873Z" },
@@ -1372,9 +1441,9 @@ name = "nvidia-cusolver-cu12"
 version = "11.7.3.90"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas-cu12", marker = "(sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "nvidia-cusparse-cu12", marker = "(sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "nvidia-nvjitlink-cu12", marker = "(sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "nvidia-cublas-cu12", marker = "(sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "nvidia-cusparse-cu12", marker = "(sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c8/32/f7cd6ce8a7690544d084ea21c26e910a97e077c9b7f07bf5de623ee19981/nvidia_cusolver_cu12-11.7.3.90-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:db9ed69dbef9715071232caa9b69c52ac7de3a95773c2db65bdba85916e4e5c0", size = 267229841, upload-time = "2025-03-07T01:46:54.356Z" },
@@ -1387,7 +1456,7 @@ name = "nvidia-cusparse-cu12"
 version = "12.5.8.93"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink-cu12", marker = "(sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "nvidia-nvjitlink-cu12", marker = "(sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/bc/f7/cd777c4109681367721b00a106f491e0d0d15cfa1fd59672ce580ce42a97/nvidia_cusparse_cu12-12.5.8.93-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:9b6c161cb130be1a07a27ea6923df8141f3c295852f4b260c65f18f3e0a091dc", size = 288117129, upload-time = "2025-03-07T01:47:40.407Z" },
@@ -1448,8 +1517,8 @@ name = "omegaconf"
 version = "2.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "antlr4-python3-runtime", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "pyyaml", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "antlr4-python3-runtime" },
+    { name = "pyyaml" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/09/48/6388f1bb9da707110532cb70ec4d2822858ddfb44f1cdf1233c20a80ea4b/omegaconf-2.3.0.tar.gz", hash = "sha256:d5d4b6d29955cc50ad50c46dc269bcd92c6e00f5f90d23ab5fee7bfca4ba4cc7", size = 3298120, upload-time = "2022-12-08T20:59:22.753Z" }
 wheels = [
@@ -1461,7 +1530,7 @@ name = "opencv-python"
 version = "4.13.0.92"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "numpy" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fc/6f/5a28fef4c4a382be06afe3938c64cc168223016fa520c5abaf37e8862aa5/opencv_python-4.13.0.92-cp37-abi3-macosx_13_0_arm64.whl", hash = "sha256:caf60c071ec391ba51ed00a4a920f996d0b64e3e46068aac1f646b5de0326a19", size = 46247052, upload-time = "2026-02-05T07:01:25.046Z" },
@@ -1488,8 +1557,9 @@ name = "pandas"
 version = "3.0.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "python-dateutil", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "numpy" },
+    { name = "python-dateutil" },
+    { name = "tzdata", marker = "sys_platform == 'emscripten' or sys_platform == 'win32' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/da/99/b342345300f13440fe9fe385c3c481e2d9a595ee3bab4d3219247ac94e9a/pandas-3.0.2.tar.gz", hash = "sha256:f4753e73e34c8d83221ba58f232433fca2748be8b18dbca02d242ed153945043", size = 4645855, upload-time = "2026-03-31T06:48:30.816Z" }
 wheels = [
@@ -1734,10 +1804,10 @@ name = "pydantic"
 version = "2.12.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "annotated-types", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "pydantic-core", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "typing-extensions", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "typing-inspection", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "annotated-types" },
+    { name = "pydantic-core" },
+    { name = "typing-extensions" },
+    { name = "typing-inspection" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/69/44/36f1a6e523abc58ae5f928898e4aca2e0ea509b5aa6f6f392a5d882be928/pydantic-2.12.5.tar.gz", hash = "sha256:4d351024c75c0f085a9febbb665ce8c0c6ec5d30e903bdb6394b7ede26aebb49", size = 821591, upload-time = "2025-11-26T15:11:46.471Z" }
 wheels = [
@@ -1749,7 +1819,7 @@ name = "pydantic-core"
 version = "2.41.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/71/70/23b021c950c2addd24ec408e9ab05d59b035b39d97cdc1130e1bce647bb6/pydantic_core-2.41.5.tar.gz", hash = "sha256:08daa51ea16ad373ffd5e7606252cc32f07bc72b28284b6bc9c6df804816476e", size = 460952, upload-time = "2025-11-04T13:43:49.098Z" }
 wheels = [
@@ -1838,10 +1908,11 @@ name = "pytest"
 version = "9.0.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "iniconfig", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "pluggy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "pygments", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "iniconfig" },
+    { name = "packaging" },
+    { name = "pluggy" },
+    { name = "pygments" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/7d/0d/549bd94f1a0a402dc8cf64563a117c0f3765662e2e668477624baeec44d5/pytest-9.0.3.tar.gz", hash = "sha256:b86ada508af81d19edeb213c681b1d48246c1a91d304c6c81a427674c17eb91c", size = 1572165, upload-time = "2026-04-07T17:16:18.027Z" }
 wheels = [
@@ -1853,7 +1924,7 @@ name = "python-dateutil"
 version = "2.9.0.post0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "six", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "six" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/66/c0/0c8b6ad9f17a802ee498c46e004a0eb49bc148f2fd230864601a86dcf6db/python-dateutil-2.9.0.post0.tar.gz", hash = "sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3", size = 342432, upload-time = "2024-03-01T18:36:20.211Z" }
 wheels = [
@@ -1894,17 +1965,17 @@ name = "pytorch-lightning"
 version = "2.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "fsspec", extra = ["http"], marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "lightning-utilities", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "pyyaml", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "fsspec", extra = ["http"] },
+    { name = "lightning-utilities" },
+    { name = "packaging" },
+    { name = "pyyaml" },
     { name = "torch", version = "2.10.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torch", version = "2.10.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torch", version = "2.10.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torchmetrics", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "tqdm", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "typing-extensions", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128') or (extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128')" },
+    { name = "torch", version = "2.10.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "torch", version = "2.10.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "extra == 'extra-7-nucleus-cu128'" },
+    { name = "torchmetrics" },
+    { name = "tqdm" },
+    { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/8b/ac/ebd5f6f58691cbd4f73836e43e1727f3814311b960c41f88e259606ca2b2/pytorch_lightning-2.6.1.tar.gz", hash = "sha256:ba08f8901cf226fcca473046ad9346f414e99117762dc869c76e650d5b3d7bdc", size = 665563, upload-time = "2026-01-30T14:59:11.636Z" }
 wheels = [
@@ -2050,10 +2121,10 @@ name = "requests"
 version = "2.33.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "certifi", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "charset-normalizer", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "idna", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "urllib3", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "certifi" },
+    { name = "charset-normalizer" },
+    { name = "idna" },
+    { name = "urllib3" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/5f/a4/98b9c7c6428a668bf7e42ebb7c79d576a1c3c1e3ae2d47e674b468388871/requests-2.33.1.tar.gz", hash = "sha256:18817f8c57c6263968bc123d237e3b8b08ac046f5456bd1e307ee8f4250d3517", size = 134120, upload-time = "2026-03-30T16:09:15.531Z" }
 wheels = [
@@ -2065,8 +2136,8 @@ name = "rich"
 version = "14.3.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "markdown-it-py", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "pygments", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "markdown-it-py" },
+    { name = "pygments" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/b3/c6/f3b320c27991c46f43ee9d856302c70dc2d0fb2dba4842ff739d5f46b393/rich-14.3.3.tar.gz", hash = "sha256:b8daa0b9e4eef54dd8cf7c86c03713f53241884e814f4e2f5fb342fe520f639b", size = 230582, upload-time = "2026-02-19T17:23:12.474Z" }
 wheels = [
@@ -2078,11 +2149,11 @@ name = "rotary-embedding-torch"
 version = "0.8.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "einops", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "einops" },
     { name = "torch", version = "2.10.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torch", version = "2.10.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torch", version = "2.10.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128') or (extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128')" },
+    { name = "torch", version = "2.10.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "torch", version = "2.10.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "extra == 'extra-7-nucleus-cu128'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/71/38/74783585b1f0282fddd3faf1abd6dd20977255c27e31737eced2d7ec05f1/rotary_embedding_torch-0.8.9.tar.gz", hash = "sha256:b213f153cad1d108064d930544fb3af678d56515893d3f869a7a146f87997e3f", size = 7497, upload-time = "2025-07-27T01:26:14.675Z" }
 wheels = [
@@ -2116,14 +2187,14 @@ name = "scikit-image"
 version = "0.26.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "imageio", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "lazy-loader", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "networkx", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "pillow", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "scipy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "tifffile", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "imageio" },
+    { name = "lazy-loader" },
+    { name = "networkx" },
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "pillow" },
+    { name = "scipy" },
+    { name = "tifffile" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a1/b4/2528bb43c67d48053a7a649a9666432dc307d66ba02e3a6d5c40f46655df/scikit_image-0.26.0.tar.gz", hash = "sha256:f5f970ab04efad85c24714321fcc91613fcb64ef2a892a13167df2f3e59199fa", size = 22729739, upload-time = "2025-12-20T17:12:21.824Z" }
 wheels = [
@@ -2174,7 +2245,7 @@ name = "scipy"
 version = "1.17.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "numpy" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/7a/97/5a3609c4f8d58b039179648e62dd220f89864f56f7357f5d4f45c29eb2cc/scipy-1.17.1.tar.gz", hash = "sha256:95d8e012d8cb8816c226aef832200b1d45109ed4464303e997c5b13122b297c0", size = 30573822, upload-time = "2026-02-23T00:26:24.851Z" }
 wheels = [
@@ -2235,9 +2306,9 @@ name = "seaborn"
 version = "0.13.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "matplotlib", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "pandas", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "pandas" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/86/59/a451d7420a77ab0b98f7affa3a1d78a313d2f7281a57afb1a34bae8ab412/seaborn-0.13.2.tar.gz", hash = "sha256:93e60a40988f4d65e9f4885df477e2fdaff6b73a9ded434c1ab356dd57eefff7", size = 1457696, upload-time = "2024-01-25T13:21:52.551Z" }
 wheels = [
@@ -2249,8 +2320,8 @@ name = "sentry-sdk"
 version = "2.57.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "certifi", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "urllib3", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "certifi" },
+    { name = "urllib3" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/4f/87/46c0406d8b5ddd026f73adaf5ab75ce144219c41a4830b52df4b9ab55f7f/sentry_sdk-2.57.0.tar.gz", hash = "sha256:4be8d1e71c32fb27f79c577a337ac8912137bba4bcbc64a4ec1da4d6d8dc5199", size = 435288, upload-time = "2026-03-31T09:39:29.264Z" }
 wheels = [
@@ -2289,7 +2360,7 @@ name = "sympy"
 version = "1.14.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "mpmath", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "mpmath" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/83/d3/803453b36afefb7c2bb238361cd4ae6125a569b4db67cd9e79846ba2d68c/sympy-1.14.0.tar.gz", hash = "sha256:d3d3fe8df1e5a0b42f0e7bdf50541697dbe7d23746e894990c030e2b05e72517", size = 7793921, upload-time = "2025-04-27T18:05:01.611Z" }
 wheels = [
@@ -2301,7 +2372,7 @@ name = "tifffile"
 version = "2026.3.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "numpy" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/c5/cb/2f6d79c7576e22c116352a801f4c3c8ace5957e9aced862012430b62e14f/tifffile-2026.3.3.tar.gz", hash = "sha256:d9a1266bed6f2ee1dd0abde2018a38b4f8b2935cb843df381d70ac4eac5458b7", size = 388745, upload-time = "2026-03-03T19:14:38.134Z" }
 wheels = [
@@ -2313,17 +2384,17 @@ name = "timm"
 version = "1.0.26"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "huggingface-hub", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "pyyaml", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "safetensors", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "huggingface-hub" },
+    { name = "pyyaml" },
+    { name = "safetensors" },
     { name = "torch", version = "2.10.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torch", version = "2.10.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torch", version = "2.10.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128') or (extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128')" },
+    { name = "torch", version = "2.10.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "torch", version = "2.10.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "extra == 'extra-7-nucleus-cu128'" },
     { name = "torchvision", version = "0.25.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torchvision", version = "0.25.0", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torchvision", version = "0.25.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torchvision", version = "0.25.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "torchvision", version = "0.25.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128') or (extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128')" },
+    { name = "torchvision", version = "0.25.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "torchvision", version = "0.25.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "extra == 'extra-7-nucleus-cu128'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/7b/1e/e924b3b2326a856aaf68586f9c52a5fc81ef45715eca408393b68c597e0e/timm-1.0.26.tar.gz", hash = "sha256:f66f082f2f381cf68431c22714c8b70f723837fa2a185b155961eab90f2d5b10", size = 2419859, upload-time = "2026-03-23T18:12:10.272Z" }
 wheels = [
@@ -2335,7 +2406,7 @@ name = "tokenizers"
 version = "0.15.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "huggingface-hub", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "huggingface-hub" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/c0/44/625db94e91c6196b6574359fa70bfe28e8eabf57a1b894f8f0ec69727fd1/tokenizers-0.15.2.tar.gz", hash = "sha256:e6e9c6e019dd5484be5beafc775ae6c925f4c69a3487040ed09b45e13df2cb91", size = 320256, upload-time = "2024-02-12T02:28:50.62Z" }
 wheels = [
@@ -2397,17 +2468,19 @@ name = "torch"
 version = "2.10.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.14' and sys_platform == 'linux'",
-    "python_full_version < '3.14' and sys_platform == 'linux'",
-    "python_full_version >= '3.14' and sys_platform == 'darwin'",
-    "python_full_version < '3.14' and sys_platform == 'darwin'",
+    "python_full_version >= '3.14' and sys_platform == 'win32'",
+    "python_full_version >= '3.14' and sys_platform == 'emscripten'",
+    "python_full_version >= '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version < '3.14' and sys_platform == 'win32'",
+    "python_full_version < '3.14' and sys_platform == 'emscripten'",
+    "python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
     { name = "cuda-bindings", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "filelock", marker = "(sys_platform == 'darwin' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "fsspec", marker = "(sys_platform == 'darwin' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "jinja2", marker = "(sys_platform == 'darwin' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "networkx", marker = "(sys_platform == 'darwin' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "filelock", marker = "(extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128') or (extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128')" },
+    { name = "fsspec", marker = "(extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128') or (extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128')" },
+    { name = "jinja2", marker = "(extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128') or (extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128')" },
+    { name = "networkx", marker = "(extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128') or (extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128')" },
     { name = "nvidia-cublas-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
     { name = "nvidia-cuda-cupti-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
     { name = "nvidia-cuda-nvrtc-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
@@ -2423,10 +2496,10 @@ dependencies = [
     { name = "nvidia-nvjitlink-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
     { name = "nvidia-nvshmem-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
     { name = "nvidia-nvtx-cu12", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "setuptools", marker = "(sys_platform == 'darwin' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "sympy", marker = "(sys_platform == 'darwin' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "setuptools", marker = "(extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128') or (extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128')" },
+    { name = "sympy", marker = "(extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128') or (extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128')" },
     { name = "triton", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "typing-extensions", marker = "(sys_platform == 'darwin' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "typing-extensions", marker = "(extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128') or (extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d3/54/a2ba279afcca44bbd320d4e73675b282fcee3d81400ea1b53934efca6462/torch-2.10.0-2-cp312-none-macosx_11_0_arm64.whl", hash = "sha256:13ec4add8c3faaed8d13e0574f5cd4a323c11655546f91fbe6afa77b57423574", size = 79498202, upload-time = "2026-02-10T21:44:52.603Z" },
@@ -2463,17 +2536,21 @@ name = "torch"
 version = "2.10.0+cpu"
 source = { registry = "https://download.pytorch.org/whl/cpu" }
 resolution-markers = [
-    "python_full_version >= '3.14' and sys_platform == 'linux'",
-    "python_full_version < '3.14' and sys_platform == 'linux'",
+    "python_full_version >= '3.14' and sys_platform == 'win32'",
+    "python_full_version >= '3.14' and sys_platform == 'emscripten'",
+    "python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version < '3.14' and sys_platform == 'win32'",
+    "python_full_version < '3.14' and sys_platform == 'emscripten'",
+    "python_full_version < '3.14' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "filelock", marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "fsspec", marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "jinja2", marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "networkx", marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "setuptools", marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "sympy", marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "typing-extensions", marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "filelock", marker = "(sys_platform != 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "fsspec", marker = "(sys_platform != 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "jinja2", marker = "(sys_platform != 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "networkx", marker = "(sys_platform != 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "setuptools", marker = "(sys_platform != 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "sympy", marker = "(sys_platform != 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "typing-extensions", marker = "(sys_platform != 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.10.0%2Bcpu-cp312-cp312-linux_aarch64.whl", hash = "sha256:8de5a36371b775e2d4881ed12cc7f2de400b1ad3d728aa74a281f649f87c9b8c", upload-time = "2026-01-23T15:10:22Z" },
@@ -2510,17 +2587,19 @@ name = "torch"
 version = "2.10.0+cu128"
 source = { registry = "https://download.pytorch.org/whl/cu128" }
 resolution-markers = [
-    "python_full_version >= '3.14' and sys_platform == 'linux'",
-    "python_full_version < '3.14' and sys_platform == 'linux'",
-    "python_full_version >= '3.14' and sys_platform == 'darwin'",
-    "python_full_version < '3.14' and sys_platform == 'darwin'",
+    "python_full_version >= '3.14' and sys_platform == 'win32'",
+    "python_full_version >= '3.14' and sys_platform == 'emscripten'",
+    "python_full_version >= '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version < '3.14' and sys_platform == 'win32'",
+    "python_full_version < '3.14' and sys_platform == 'emscripten'",
+    "python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
     { name = "cuda-bindings", marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "filelock", marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "fsspec", marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "jinja2", marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "networkx", marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "filelock", marker = "extra == 'extra-7-nucleus-cu128'" },
+    { name = "fsspec", marker = "extra == 'extra-7-nucleus-cu128'" },
+    { name = "jinja2", marker = "extra == 'extra-7-nucleus-cu128'" },
+    { name = "networkx", marker = "extra == 'extra-7-nucleus-cu128'" },
     { name = "nvidia-cublas-cu12", marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
     { name = "nvidia-cuda-cupti-cu12", marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
     { name = "nvidia-cuda-nvrtc-cu12", marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
@@ -2536,10 +2615,10 @@ dependencies = [
     { name = "nvidia-nvjitlink-cu12", marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
     { name = "nvidia-nvshmem-cu12", marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
     { name = "nvidia-nvtx-cu12", marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "setuptools", marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "sympy", marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "setuptools", marker = "extra == 'extra-7-nucleus-cu128'" },
+    { name = "sympy", marker = "extra == 'extra-7-nucleus-cu128'" },
     { name = "triton", marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "typing-extensions", marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "typing-extensions", marker = "extra == 'extra-7-nucleus-cu128'" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cu128/torch-2.10.0%2Bcu128-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:6f09cdf2415516be028ae82e6b985bcfc3eac37bc52ab401142689f6224516ca", upload-time = "2026-01-21T15:22:03Z" },
@@ -2564,13 +2643,13 @@ name = "torchmetrics"
 version = "1.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "lightning-utilities", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "lightning-utilities" },
+    { name = "numpy" },
+    { name = "packaging" },
     { name = "torch", version = "2.10.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torch", version = "2.10.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torch", version = "2.10.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128') or (extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128')" },
+    { name = "torch", version = "2.10.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "torch", version = "2.10.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "extra == 'extra-7-nucleus-cu128'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/81/34/39b8b749333db56c0585d7a11fa62a283c087bb1dfc897d69fb8cedbefb1/torchmetrics-1.9.0.tar.gz", hash = "sha256:a488609948600df52d3db4fcdab02e62aab2a85ef34da67037dc3e65b8512faa", size = 581765, upload-time = "2026-03-09T17:41:22.443Z" }
 wheels = [
@@ -2603,15 +2682,17 @@ name = "torchvision"
 version = "0.25.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.14' and sys_platform == 'linux'",
-    "python_full_version < '3.14' and sys_platform == 'linux'",
-    "python_full_version >= '3.14' and sys_platform == 'darwin'",
-    "python_full_version < '3.14' and sys_platform == 'darwin'",
+    "python_full_version >= '3.14' and sys_platform == 'win32'",
+    "python_full_version >= '3.14' and sys_platform == 'emscripten'",
+    "python_full_version >= '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version < '3.14' and sys_platform == 'win32'",
+    "python_full_version < '3.14' and sys_platform == 'emscripten'",
+    "python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "numpy", marker = "(sys_platform == 'darwin' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "pillow", marker = "(sys_platform == 'darwin' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'darwin' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "numpy", marker = "(extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128') or (extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128')" },
+    { name = "pillow", marker = "(extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128') or (extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128')" },
+    { name = "torch", version = "2.10.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128') or (extra != 'extra-7-nucleus-cpu' and extra != 'extra-7-nucleus-cu128')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/56/3a/6ea0d73f49a9bef38a1b3a92e8dd455cea58470985d25635beab93841748/torchvision-0.25.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:c2abe430c90b1d5e552680037d68da4eb80a5852ebb1c811b2b89d299b10573b", size = 1874920, upload-time = "2026-01-21T16:27:45.348Z" },
@@ -2641,13 +2722,17 @@ name = "torchvision"
 version = "0.25.0+cpu"
 source = { registry = "https://download.pytorch.org/whl/cpu" }
 resolution-markers = [
-    "python_full_version >= '3.14' and sys_platform == 'linux'",
-    "python_full_version < '3.14' and sys_platform == 'linux'",
+    "python_full_version >= '3.14' and sys_platform == 'win32'",
+    "python_full_version >= '3.14' and sys_platform == 'emscripten'",
+    "python_full_version >= '3.14' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version < '3.14' and sys_platform == 'win32'",
+    "python_full_version < '3.14' and sys_platform == 'emscripten'",
+    "python_full_version < '3.14' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "numpy", marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "pillow", marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torch", version = "2.10.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform == 'linux' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "numpy", marker = "(sys_platform != 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "pillow", marker = "(sys_platform != 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "torch", version = "2.10.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "(sys_platform != 'darwin' and extra == 'extra-7-nucleus-cpu') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cpu/torchvision-0.25.0%2Bcpu-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:727334e9a721cfc1ac296ce0bf9e69d9486821bfa5b1e75a8feb6f78041db481", upload-time = "2026-01-20T18:32:30Z" },
@@ -2672,15 +2757,17 @@ name = "torchvision"
 version = "0.25.0+cu128"
 source = { registry = "https://download.pytorch.org/whl/cu128" }
 resolution-markers = [
-    "python_full_version >= '3.14' and sys_platform == 'linux'",
-    "python_full_version < '3.14' and sys_platform == 'linux'",
-    "python_full_version >= '3.14' and sys_platform == 'darwin'",
-    "python_full_version < '3.14' and sys_platform == 'darwin'",
+    "python_full_version >= '3.14' and sys_platform == 'win32'",
+    "python_full_version >= '3.14' and sys_platform == 'emscripten'",
+    "python_full_version >= '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version < '3.14' and sys_platform == 'win32'",
+    "python_full_version < '3.14' and sys_platform == 'emscripten'",
+    "python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 dependencies = [
-    { name = "numpy", marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "pillow", marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "torch", version = "2.10.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "(sys_platform == 'darwin' and extra == 'extra-7-nucleus-cu128') or (sys_platform == 'linux' and extra == 'extra-7-nucleus-cu128') or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "numpy", marker = "extra == 'extra-7-nucleus-cu128'" },
+    { name = "pillow", marker = "extra == 'extra-7-nucleus-cu128'" },
+    { name = "torch", version = "2.10.0+cu128", source = { registry = "https://download.pytorch.org/whl/cu128" }, marker = "extra == 'extra-7-nucleus-cu128'" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cu128/torchvision-0.25.0%2Bcu128-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:8623e534ef6a815bd6407d4b52dd70c7154e2eda626ad4b9cb895d36c5a3305b", upload-time = "2026-01-21T22:32:23Z" },
@@ -2704,6 +2791,9 @@ wheels = [
 name = "tqdm"
 version = "4.67.3"
 source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+]
 sdist = { url = "https://files.pythonhosted.org/packages/09/a9/6ba95a270c6f1fbcd8dac228323f2777d886cb206987444e4bce66338dd4/tqdm-4.67.3.tar.gz", hash = "sha256:7d825f03f89244ef73f1d4ce193cb1774a8179fd96f31d7e1dcde62092b960bb", size = 169598, upload-time = "2026-02-03T17:35:53.048Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/16/e1/3079a9ff9b8e11b846c6ac5c8b5bfb7ff225eee721825310c91b3b50304f/tqdm-4.67.3-py3-none-any.whl", hash = "sha256:ee1e4c0e59148062281c49d80b25b67771a127c85fc9676d3be5f243206826bf", size = 78374, upload-time = "2026-02-03T17:35:50.982Z" },
@@ -2714,16 +2804,16 @@ name = "transformers"
 version = "4.35.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "filelock", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "huggingface-hub", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "pyyaml", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "regex", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "requests", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "safetensors", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "tokenizers", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "tqdm", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "filelock" },
+    { name = "huggingface-hub" },
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "pyyaml" },
+    { name = "regex" },
+    { name = "requests" },
+    { name = "safetensors" },
+    { name = "tokenizers" },
+    { name = "tqdm" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/49/97/00142bd2fef5cdaa945ffc2aa0021d127390ef6b0fdc2ac7295cf199a488/transformers-4.35.2.tar.gz", hash = "sha256:2d125e197d77b0cdb6c9201df9fa7e2101493272e448b9fba9341c695bee2f52", size = 6832593, upload-time = "2023-11-15T16:39:03.287Z" }
 wheels = [
@@ -2761,11 +2851,20 @@ name = "typing-inspection"
 version = "0.4.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/55/e3/70399cb7dd41c10ac53367ae42139cf4b1ca5f36bb3dc6c9d33acdb43655/typing_inspection-0.4.2.tar.gz", hash = "sha256:ba561c48a67c5958007083d386c3295464928b01faa735ab8547c5692e87f464", size = 75949, upload-time = "2025-10-01T02:14:41.687Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/dc/9b/47798a6c91d8bdb567fe2698fe81e0c6b7cb7ef4d13da4114b41d239f65d/typing_inspection-0.4.2-py3-none-any.whl", hash = "sha256:4ed1cacbdc298c220f1bd249ed5287caa16f34d44ef4e9c3d0cbad5b521545e7", size = 14611, upload-time = "2025-10-01T02:14:40.154Z" },
+]
+
+[[package]]
+name = "tzdata"
+version = "2026.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ba/19/1b9b0e29f30c6d35cb345486df41110984ea67ae69dddbc0e8a100999493/tzdata-2026.2.tar.gz", hash = "sha256:9173fde7d80d9018e02a662e168e5a2d04f87c41ea174b139fbef642eda62d10", size = 198254, upload-time = "2026-04-24T15:22:08.651Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ce/e4/dccd7f47c4b64213ac01ef921a1337ee6e30e8c6466046018326977efd95/tzdata-2026.2-py2.py3-none-any.whl", hash = "sha256:bbe9af844f658da81a5f95019480da3a89415801f6cc966806612cc7169bffe7", size = 349321, upload-time = "2026-04-24T15:22:05.876Z" },
 ]
 
 [[package]]
@@ -2782,16 +2881,16 @@ name = "wandb"
 version = "0.25.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "click", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "gitpython", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "packaging", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "platformdirs", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "protobuf", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "pydantic", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "pyyaml", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "requests", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "sentry-sdk", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "typing-extensions", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "click" },
+    { name = "gitpython" },
+    { name = "packaging" },
+    { name = "platformdirs" },
+    { name = "protobuf" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+    { name = "requests" },
+    { name = "sentry-sdk" },
+    { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/60/bb/eb579bf9abac70934a014a9d4e45346aab307994f3021d201bebe5fa25ec/wandb-0.25.1.tar.gz", hash = "sha256:b2a95cd777ecbe7499599a43158834983448a0048329bc7210ef46ca18d21994", size = 43983308, upload-time = "2026-03-10T23:51:44.227Z" }
 wheels = [
@@ -2811,9 +2910,9 @@ name = "yarl"
 version = "1.23.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "idna", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "multidict", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
-    { name = "propcache", marker = "sys_platform == 'darwin' or sys_platform == 'linux' or (extra == 'extra-7-nucleus-cpu' and extra == 'extra-7-nucleus-cu128')" },
+    { name = "idna" },
+    { name = "multidict" },
+    { name = "propcache" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/23/6e/beb1beec874a72f23815c1434518bfc4ed2175065173fb138c3705f658d4/yarl-1.23.0.tar.gz", hash = "sha256:53b1ea6ca88ebd4420379c330aea57e258408dd0df9af0992e5de2078dc9f5d5", size = 194676, upload-time = "2026-03-01T22:07:53.373Z" }
 wheels = [
