@@ -41,20 +41,17 @@ dev = [
 
 [project.optional-dependencies]
 cpu = [
-    "torch>=2.10.0,<3",
-    "torchvision>=0.25.0",
+    "torch>=2.11.0,<3",
     "natten>=0.21.6",
 ]
 cu128 = [
     # fully pinned
-    "torch==2.10.0",
-    "torchvision==0.25.0",
-    "natten==0.21.5+torch2100cu128",
+    "torch==2.11.0,<3",
+    "natten==0.21.6+torch2110cu128",
 ]
 cu130 = [
     # try not to pin?
-    "torch>=2.11.0",
-    "torchvision>=0.26.0",
+    "torch>=2.11.0,<3",
     "natten>=0.21.6",
 ]
 poseidon = [
@@ -76,11 +73,6 @@ conflicts = [
 [tool.uv.sources]
 torch = [
   # For developing on macos, need cpu torch
-  { index = "pytorch-cpu", extra = "cpu" },
-  { index = "pytorch-cu128", extra = "cu128" },
-  { index = "pytorch-cu130", extra = "cu130" },
-]
-torchvision = [
   { index = "pytorch-cpu", extra = "cpu" },
   { index = "pytorch-cu128", extra = "cu128" },
   { index = "pytorch-cu130", extra = "cu130" },
