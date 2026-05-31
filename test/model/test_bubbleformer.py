@@ -23,12 +23,12 @@ def test_bubbleformer_vit(device):
     batch = CollatedBatch(
         input=torch.randn(4, 8, 4, 64, 64),
         target=None,
-        fluid_params_dict={},
+        sim_params_dict={},
         x_grid=torch.randn(64),
         y_grid=torch.randn(64),
         dx=torch.tensor(0.01),
         dy=torch.tensor(0.01),
-        fluid_params_tensor=torch.randn(4, 16),
+        sim_params_tensor=torch.randn(4, 16),
     ).to(device)
     
     output = model(batch)
@@ -56,12 +56,12 @@ def test_bubbleformer_film_vit(device):
     batch = CollatedBatch(
         input=torch.randn(4, 8, 4, 64, 64),
         target=None,
-        fluid_params_dict={},
+        sim_params_dict={},
         x_grid=torch.randn(64),
         y_grid=torch.randn(64),
         dx=torch.tensor(0.01),
         dy=torch.tensor(0.01),
-        fluid_params_tensor=torch.randn(4, 16),
+        sim_params_tensor=torch.randn(4, 16),
     ).to(device)
     
     output = model(batch)

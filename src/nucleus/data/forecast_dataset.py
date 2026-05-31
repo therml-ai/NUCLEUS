@@ -83,9 +83,12 @@ class ForecastDataset(ForecastDatasetBase):
         history_time_window: int,
         time_step: int,
         start_time: int,
+        fluid_params: List[str],
+        heater_params: List[str],
+        global_params: List[str],
+        layout: str,
         normalizer: Optional[Normalizer],
         augment: bool,
-        layout: str = "t h w c",
     ):
         super().__init__(
             filenames=filenames,
@@ -99,13 +102,30 @@ class ForecastDataset(ForecastDatasetBase):
         )
         self.future_time_window = future_time_window
         self.history_time_window = history_time_window
-        self.noise_scales = torch.linspace(0.001, 1, 500).tolist()
+        self.time_step = time_step
+        self.start_time = start_time
+        self.fluid_params = fluid_params
+        self.heater_params = heater_params
+        self.global_params = global_params
+        self.layout = layout  
+        self.normalizer = normalizer
+        self.augment = augment
+        
+        self.data = None
 
         self.input_num_fields = len(self.input_fields)
         self.output_num_fields = len(self.output_fields)
         self.fields = list(set(self.input_fields + self.output_fields))
-        self.diff_terms = {k: [] for k in self.fields}
-        self.div_terms = {k: [] for k in self.fields}
+
+        self.diff_terms = {k:[] for k in self.fields}
+        self.div_terms = {k:[] for k in self.fields}
+
+        sim_params_files = [fname.replace(".hdf5", ".json") for fname in filenames]
+        self.sim_params = []
+        for sim_params_file in sim_params_files:
+            with open(sim_params_file, "r", encoding="utf-8") as f:
+                sim_params_json = json.load(f)
+            self.sim_params.append(sim_params_json)
 
     def _get_traj_len(self, traj_len: int) -> int:
         return traj_len - self.start_time - self.future_time_window - self.history_time_window + 1
@@ -129,25 +149,30 @@ class ForecastDataset(ForecastDatasetBase):
             [torch.from_numpy(np.array(self.data[file_idx][f][out_slice])) for f in self.output_fields],
             dim=-1,
         )
-
-        fluid_params = self.fluid_params[file_idx]
-        bulk_temp = int(fluid_params["bulk_temp"])
+        
+        sim_params = self.sim_params[file_idx]
+        bulk_temp = int(sim_params["bulk_temp"])
 
         if self.normalizer is not None:
             inp_data = self.normalizer.normalize(inp_data, bulk_temp)
             out_data = self.normalizer.normalize(out_data, bulk_temp)
-            fluid_params = self.normalizer.normalize_params([fluid_params])[0]
-
-        if self.augment and random.random() < 0.5:
-            inp_data = torch.flip(inp_data, dims=[2])
-            out_data = torch.flip(out_data, dims=[2])
-
+            sim_params = self.normalizer.normalize_params([sim_params])[0]
+        
+        if self.augment:
+            if random.random() < 0.5:
+                # [T H W C], we flip along the width (dim=2)
+                inp_data = torch.flip(inp_data, dims=[2])
+                out_data = torch.flip(out_data, dims=[2])
+                
         inp_data = convert_layout(inp_data, self.layout)
         out_data = convert_layout(out_data, self.layout)
 
         return make_data(
             input=inp_data.float(),
             target=out_data.float(),
-            fluid_params_dict=fluid_params,
+            sim_params_dict=sim_params,
             downsample_factor=1,
+            fluid_params=self.fluid_params,
+            heater_params=self.heater_params,
+            global_params=self.global_params
         )

@@ -22,20 +22,25 @@ class InMemForecastDataset(Dataset):
         history_time_window: int,
         time_step: int,
         start_time: int,
+        fluid_params: List[str],
+        heater_params: List[str],
+        global_params: List[str],
+        layout: str,
         normalizer: Optional[Normalizer],
         augment: bool = False,
-        layout: str = "t h w c"
     ):
         super().__init__()
         self.filenames = filenames
-        
         self.future_time_window = future_time_window
         self.history_time_window = history_time_window
         self.time_step = time_step
         self.start_time = start_time
+        self.fluid_params = fluid_params
+        self.heater_params = heater_params
+        self.global_params = global_params
+        self.layout = layout
         self.normalizer = normalizer
         self.augment = augment
-        self.layout = layout
         
         if input_fields is not None:
             self.input_fields = input_fields
@@ -54,12 +59,12 @@ class InMemForecastDataset(Dataset):
         self.diff_terms = {k:[] for k in self.fields}
         self.div_terms = {k:[] for k in self.fields}
 
-        fluid_params_files = [fname.replace(".hdf5", ".json") for fname in filenames]
-        self.fluid_params = []
-        for fluid_params_file in fluid_params_files:
-            with open(fluid_params_file, "r", encoding="utf-8") as f:
-                fluid_params = json.load(f)
-            self.fluid_params.append(fluid_params)
+        sim_params_files = [fname.replace(".hdf5", ".json") for fname in filenames]
+        self.sim_params = []
+        for sim_params_file in sim_params_files:
+            with open(sim_params_file, "r", encoding="utf-8") as f:
+                sim_params_json = json.load(f)
+            self.sim_params.append(sim_params_json)
 
     def _load_data(self):
         hdf5_files = [h5.File(filename, "r") for filename in self.filenames]
@@ -112,13 +117,13 @@ class InMemForecastDataset(Dataset):
         inp_data = torch.stack(inp_data, dim=-1) # (T, H, W, C)
         out_data = torch.stack(out_data, dim=-1) # (T, H, W, C)
         
-        fluid_params = self.fluid_params[file_idx]
-        bulk_temp = int(fluid_params["bulk_temp"])
+        sim_params = self.sim_params[file_idx]
+        bulk_temp = int(sim_params["bulk_temp"])
         
         if self.normalizer is not None:
             inp_data = self.normalizer.normalize(inp_data, bulk_temp)
             out_data = self.normalizer.normalize(out_data, bulk_temp)
-            fluid_params = self.normalizer.normalize_params([fluid_params])[0]
+            sim_params = self.normalizer.normalize_params([sim_params])[0]
         
         if self.augment:
             if random.random() < 0.5:
@@ -132,6 +137,9 @@ class InMemForecastDataset(Dataset):
         return make_data(
             input=inp_data.float(),
             target=out_data.float(),
-            fluid_params_dict=fluid_params,
-            downsample_factor=1
+            sim_params_dict=sim_params,
+            downsample_factor=1,
+            fluid_params=self.fluid_params,
+            heater_params=self.heater_params,
+            global_params=self.global_params
         )

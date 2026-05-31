@@ -210,7 +210,7 @@ class BubbleformerFilmViT(nn.Module):
         fluid_params: (B, num_fluid_params)
         """
         x = batch.input
-        fluid_params = batch.fluid_params_tensor
+        fluid_params = batch.sim_params_tensor
         B, T, _, _, _ = x.shape
 
         # Encode

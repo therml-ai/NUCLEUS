@@ -301,7 +301,7 @@ class ConditionedForecastModule(ForecastModule):
         Since our batch is in a dataclass, pytorch and lightning cannot figure out how to pin memory and
         asynchrously transfer the batch to the device. So, we do this manually.
         """
-        batch.fluid_params_tensor = batch.get_fluid_params_tensor('cpu')
+        batch.sim_params_tensor = batch.get_sim_params_tensor('cpu')
         pinned_batch = batch.pin_memory()
         return pinned_batch.to(device, non_blocking=True)
 
