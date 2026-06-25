@@ -46,7 +46,6 @@ class Nucleus1MoEBase(nn.Module):
         "thcogas",
         "stefan",
         "prandtl",
-        "gravy",
         "bulk_temp",
         "sat_temp"
     ]

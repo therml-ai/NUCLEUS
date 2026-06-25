@@ -135,7 +135,7 @@ class MoEBase(nn.Module):
     config_from_dict = staticmethod(_config_from_dict)
     expected_fluid_params = [
         "inv_reynolds", "cpgas", "mugas", "rhogas", "thcogas",
-        "stefan", "prandtl", "gravy", "bulk_temp", "sat_temp"
+        "stefan", "prandtl", "bulk_temp", "sat_temp"
     ]
     expected_heater_params = ["wallTemp", "xMin", "xMax"]
     expected_global_params = ["gravy"]

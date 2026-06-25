@@ -43,7 +43,6 @@ class Nucleus1ViTBase(nn.Module):
         "thcogas",
         "stefan",
         "prandtl",
-        "gravy",
         "bulk_temp",
         "sat_temp"
     ]
