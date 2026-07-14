@@ -1,7 +1,14 @@
-log_dir: # directory to write logs, model checkpoints, profiles,
 checkpoint_path: # path to resume training
-commit_sha:
+commit_sha: # Can be used to log git commit sha for training run
 profile: # use pytorch profiler
+
+# Root path for dataset files, referenced as ${data_dir} in the data_cfg paths.
+# Mandatory and unset by default so it must be set by users in this file or 
+# provided on the CLI, e.g. data_dir=/path/to/BubbleML_2
+data_dir: ???
+
+# directory to write logs, model checkpoints, and profiles
+log_dir: ??? 
 
 seed: 42
 

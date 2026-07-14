@@ -6,10 +6,10 @@ input_fields: ["dfun", "temperature", "velx", "vely"]
 output_fields: ["dfun", "temperature", "velx", "vely"]
 
 train_paths:
-  - /share/crsp/lab/amowli/share/BubbleML_2_wds_uncompressed/train/shard-{000000..000033}.tar
+  - ${data_dir}/train/shard-{000000..000033}.tar
 
 val_paths:
-  - /share/crsp/lab/amowli/share/BubbleML_2_wds_uncompressed/val/shard-{000000..000001}.tar
+  - ${data_dir}/val/shard-{000000..000001}.tar
 
 test_paths:
-  - /share/crsp/lab/amowli/share/BubbleML_2_wds_uncompressed/test/shard-{000000..000003}.tar
+  - ${data_dir}/test/shard-{000000..000003}.tar

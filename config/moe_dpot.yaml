@@ -1,6 +1,12 @@
 log_dir: /pub/afeeney/bubbleformer_logs
 seed: 42
 
+# Root path for dataset files, referenced as ${data_dir} in the data_cfg paths.
+# Mandatory and unset by default so it must be set by users in this file or 
+# provided on the CLI, e.g. data_dir=/path/to/BubbleML_2
+data_dir: ???
+log_dir: ???
+
 nodes: 1
 devices: 1
 
