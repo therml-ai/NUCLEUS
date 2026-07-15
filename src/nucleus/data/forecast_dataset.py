@@ -153,16 +153,21 @@ class ForecastDataset(ForecastDatasetBase):
         sim_params = self.sim_params[file_idx]
         bulk_temp = int(sim_params["bulk_temp"])
 
+        if self.augment and random.random() < 0.5:
+            # [T H W C], we flip along the width (dim=2)
+            inp_data = torch.flip(inp_data, dims=[2])
+            out_data = torch.flip(out_data, dims=[2])
+            # Flipping the x-velocity requires it's sign to be negated (i.e., the flow is changed from
+            # going left to going towards the right), 
+            # this has to be applied before the following normalization because the normalization may 
+            # shift the mean x-velocity and change the sign. 
+            inp_data[..., 2] *= -1
+            out_data[..., 2] *= -1
+
         if self.normalizer is not None:
             inp_data = self.normalizer.normalize(inp_data, bulk_temp)
             out_data = self.normalizer.normalize(out_data, bulk_temp)
             sim_params = self.normalizer.normalize_params([sim_params])[0]
-        
-        if self.augment:
-            if random.random() < 0.5:
-                # [T H W C], we flip along the width (dim=2)
-                inp_data = torch.flip(inp_data, dims=[2])
-                out_data = torch.flip(out_data, dims=[2])
                 
         inp_data = convert_layout(inp_data, self.layout)
         out_data = convert_layout(out_data, self.layout)
