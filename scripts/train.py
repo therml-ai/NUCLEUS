@@ -3,8 +3,6 @@ import pprint
 import time
 import signal
 from datetime import date
-import subprocess
-import glob
 from pathlib import Path
 from typing import Optional
 
@@ -12,7 +10,7 @@ import hydra
 import wandb
 from omegaconf import DictConfig, OmegaConf
 import torch
-from torch.profiler import profile, record_function, ProfilerActivity
+from torch.profiler import profile, ProfilerActivity
 from torch.utils.data import DataLoader
 from lightning import seed_everything, Trainer
 from lightning.pytorch.loggers.wandb import WandbLogger
@@ -24,7 +22,7 @@ import braceexpand
 
 from nucleus.data.batching import collate
 from nucleus.data.normalize import get_normalizer
-from nucleus.data import ForecastDataset, InMemForecastDataset, forecast_web_dataset
+from nucleus.data import get_pydataset, forecast_web_dataset
 from nucleus.models.modules import get_train_module
 from nucleus.utils.set_fp32_precision import set_fp32_precision
 from nucleus.utils.parameter_count import count_model_parameters
@@ -189,7 +187,8 @@ def main(cfg: DictConfig) -> None:
         normalizer=normalizer,
     )
 
-    use_webdataset = any(str(p).endswith(".tar") for p in cfg.data_cfg.train_paths)
+    pydataset = cfg.pydataset
+    use_webdataset = pydataset == "forecast_web"
     if use_webdataset:
         train_shard_urls = list(braceexpand.braceexpand(list(cfg.data_cfg.train_paths)[0]))
 
@@ -208,7 +207,7 @@ def main(cfg: DictConfig) -> None:
             **shared_dataset_kwargs,
         )
     else:
-        dataset_cls = InMemForecastDataset if "64" in cfg.data_cfg.dataset else ForecastDataset
+        dataset_cls = get_pydataset(pydataset)
         hdf5_kwargs = dict(
             time_step=cfg.time_step,
             start_time=cfg.start_time,

@@ -9,8 +9,11 @@ def test_default_mandatory_fields_missing():
         cfg = compose(config_name="default")
         assert OmegaConf.is_missing(cfg, "data_dir")
         assert OmegaConf.is_missing(cfg, "log_dir")
+        assert OmegaConf.is_missing(cfg, "pydataset")
         with pytest.raises(MissingMandatoryValue):
             _ = cfg.log_dir
+        with pytest.raises(MissingMandatoryValue):
+            _ = cfg.pydataset
 
 
 def test_default_empty_fields():

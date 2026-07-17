@@ -1,6 +1,6 @@
 checkpoint_path: # path to resume training
 commit_sha: # Can be used to log git commit sha for training run
-profile: # use pytorch profiler
+profile: # bool, set True to do a short run pytorch profiler
 
 # Root path for dataset files, referenced as ${data_dir} in the data_cfg paths.
 # Mandatory and unset by default so it must be set by users in this file or 
@@ -8,7 +8,17 @@ profile: # use pytorch profiler
 data_dir: ???
 
 # directory to write logs, model checkpoints, and profiles
-log_dir: ??? 
+log_dir: ???
+
+# which pytorch Dataset class to use.
+# Options are implemented in src/nucleus/data/
+# 1. forecast
+# 2. in_mem_forecast
+# "in_mem" datasets try to load the whole dataset into CPU memory
+# to make training a little faster. These of course only works when the dataset
+# is small enough to fit into CPU memory...!
+pydataset: ??? 
+
 
 seed: 42
 
