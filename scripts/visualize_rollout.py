@@ -62,16 +62,5 @@ def main():
         columnwise=True
     )
 
-    pred_vv = vapor_volume(pred[..., 0], 1/32, 1/32).mean()
-    gt_vv = vapor_volume(gt[..., 0], 1/32, 1/32).mean()
-    
-    pred_hf, pred_qmax = heat_flux(pred[..., 1], pred[..., 0], 97, 1/32, 1/32)
-    gt_hf, gt_qmax = heat_flux(gt[..., 1], gt[..., 0], 97, 1/32, 1/32)
-    
-    print(pred_vv, gt_vv)
-    
-    print(pred_hf, gt_hf)
-    print(pred_qmax, gt_qmax)
-    
 if __name__ == "__main__":
     main()
