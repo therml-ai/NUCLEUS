@@ -21,10 +21,20 @@ def vapor_volume_at_height(sdf, dx, dy):
     vapor_mask = sdf > 0
     return vapor_mask.astype(float).sum(axis=(-1)) * dx
 
+def velocity_divergence(velx, vely, dx, dy):
+    # div(u) = d velx/dx + d vely/dy. In the (T, H, W) layout width (x) is the last
+    # axis and height (y) the second-to-last.
+    dvelx_dx = np.gradient(velx, dx, axis=-1)
+    dvely_dy = np.gradient(vely, dy, axis=-2)
+    return dvelx_dx + dvely_dy
+
+def max_divergence_over_time(velx, vely, sdf, dx, dy):
+    # Worst-case divergence magnitude of liquid bulk  at each timestep.
+    divergence = velocity_divergence(velx, vely, dx, dy)
+    
+    return (np.abs(divergence) * (sdf < -1).astype(float)).max(axis=(-2, -1))
+
 def plot_vapor_volume_at_height(pred_vvh, gt_vvh, save_path):
-    # pred_vvh and gt_vvh have shape (time, height); transpose so imshow puts
-    # height on the y-axis and time on the x-axis, with a shared color scale so
-    # prediction and ground truth are directly comparable.
     vmin = min(pred_vvh.min(), gt_vvh.min())
     vmax = max(pred_vvh.max(), gt_vvh.max())
 
@@ -46,10 +56,7 @@ def plot_vapor_volume_at_height(pred_vvh, gt_vvh, save_path):
     plt.close(fig)
 
 def plot_time_averaged_vapor_volume(pred_vvh, gt_vvh, save_path):
-    # Average the (time, height) vapor volume over time into a profile vs height,
-    # with height on the y-axis to match the imshow orientation.
     heights = np.arange(pred_vvh.shape[1])
-
     fig, ax = plt.subplots(figsize=(6, 5))
     ax.plot(gt_vvh.mean(axis=0), heights, label="Ground Truth")
     ax.plot(pred_vvh.mean(axis=0), heights, label="Prediction")
@@ -90,6 +97,16 @@ def plot_temperature_density(pred_temp, gt_temp, save_path, num_points=512, max_
     fig.savefig(save_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
+def plot_max_divergence(pred_max_div, gt_max_div, save_path):
+    fig, ax = plt.subplots(figsize=(7, 5))
+    ax.plot(range(gt_max_div.shape[0]), gt_max_div, label="Ground Truth")
+    ax.plot(range(pred_max_div.shape[0]), pred_max_div, label="Prediction")
+    ax.set_xlabel("time step")
+    ax.set_ylabel("max |divergence|")
+    ax.legend()
+    fig.savefig(save_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--path", required=True, type=str)
@@ -117,6 +134,13 @@ def main():
     temp_density_save_path = path / "temperature_density.png"
     plot_temperature_density(pred[..., 1], gt[..., 1], temp_density_save_path)
     print(f"saved temperature-density plot to {temp_density_save_path}")
+
+    pred_max_div = max_divergence_over_time(pred[..., 2], pred[..., 3], pred[..., 0], 1/32, 1/32)
+    gt_max_div = max_divergence_over_time(gt[..., 2], gt[..., 3], gt[..., 0], 1/32, 1/32)
+
+    max_div_save_path = path / "max_divergence.png"
+    plot_max_divergence(pred_max_div, gt_max_div, max_div_save_path)
+    print(f"saved max-divergence plot to {max_div_save_path}")
 
 if __name__ == "__main__":
     main()
