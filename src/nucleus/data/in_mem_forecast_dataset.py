@@ -55,9 +55,6 @@ class InMemForecastDataset(Dataset):
         self.num_trajs = [1 for _ in range(len(self.filenames))]
         self.traj_lens = [d[self.input_fields[0]].shape[0] for d in self.data]
 
-        self.diff_terms = {k:[] for k in self.fields}
-        self.div_terms = {k:[] for k in self.fields}
-
         sim_params_files = [fname.replace(".hdf5", ".json") for fname in filenames]
         self.sim_params = []
         for sim_params_file in sim_params_files:
