@@ -18,7 +18,7 @@ from nucleus.layers import (
 )
 from nucleus.data.batching import CollatedBatch
 from nucleus.utils.sdf_reinit import sdf_reinit_sussman
-from nucleus.utils.inf_stabilizer import NormalizedTempLimits, clip_temp_by_phase
+from nucleus.utils.inf_stabilizer import clip_temp_by_phase
 
 from ._api import register_model
 
@@ -241,39 +241,58 @@ class MoEBase(nn.Module):
 
         return x.to(torch.float32), moe_outputs
 
+    def _normalized_sim_params(self, sim_params_dict: dict, normalizer, device, batch_size: int) -> torch.Tensor:
+        # Assemble the normalized conditioning tensor the network expects from the
+        # physical sim-parameter dict, ordered to match the expected_* fields and
+        # broadcast to the rollout batch size.
+        normalized = normalizer.normalize_params([sim_params_dict])[0]
+        values = (
+            [normalized[param] for param in self.expected_fluid_params]
+            + [normalized["heater"][param] for param in self.expected_heater_params]
+            + [normalized[param] for param in self.expected_global_params]
+        )
+        sim_params = torch.tensor(values, device=device, dtype=torch.float32)
+        return sim_params[None, :].expand(batch_size, -1).contiguous()
+
     def forward_trajectory(
         self,
         initial_state: torch.Tensor,
-        sim_params: torch.Tensor,
+        sim_params_dict: dict,
+        normalizer,
         dx: float,
         input_time_window_size: int,
         output_time_window_size: int,
         trajectory_steps: int,
         use_sdf_reinit: bool = False,
         return_moe_outputs: bool = False,
-        normalized_temp_limits: Optional[NormalizedTempLimits] = None,
+        clip_temp: bool = False,
     ):
         assert initial_state.dim() == 5, "initial state must be [B, T, H, W, C]"
-        assert sim_params.dim() == 2, "fluid params must be [B, num_params]"
-        assert initial_state.shape[0] == sim_params.shape[0]
         assert input_time_window_size <= initial_state.shape[1]
+
+        bulk_temp = sim_params_dict["bulk_temp"]
+        sim_params = self._normalized_sim_params(
+            sim_params_dict, normalizer, initial_state.device, initial_state.shape[0]
+        )
 
         trajectory = initial_state.clone()
         trajectory_moe_outputs = [] if return_moe_outputs else None
 
         for _ in range(input_time_window_size, trajectory_steps, output_time_window_size):
-            pred, moe_outputs = self.step(trajectory[:, -input_time_window_size:], sim_params)
+            normalized_window = normalizer.normalize(trajectory[:, -input_time_window_size:], bulk_temp)
+            pred, moe_outputs = self.step(normalized_window, sim_params)
+            pred = normalizer.unnormalize(pred, bulk_temp)
             output_time_window = pred[:, -output_time_window_size:]
 
             if use_sdf_reinit:
                 output_time_window[..., 0] = sdf_reinit_sussman(output_time_window[..., 0], dx=dx, n_iter=5)
-                
-            if normalized_temp_limits:
+
+            if clip_temp:
                 output_time_window[..., 1] = clip_temp_by_phase(
                     output_time_window[..., 1],
                     output_time_window[..., 0],
-                    # need to be normalized using the normalization parameters for the temperature field.
-                    normalized_temp_limits
+                    sim_params_dict["sat_temp"],
+                    sim_params_dict["heater"]["wallTemp"],
                 )
 
             trajectory = torch.cat((trajectory, output_time_window), dim=1)

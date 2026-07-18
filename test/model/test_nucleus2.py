@@ -1,9 +1,11 @@
+import random
 import torch
 import pytest
 
 from nucleus.models.nucleus2_moe import Nucleus2MoE, Nucleus2MoEConfig
 from nucleus.models.nucleus2_moe_divfree import Nucleus2MoEDivFree, Nucleus2MoEDivFreeConfig
 from nucleus.data.batching import CollatedBatch
+from nucleus.data.normalize import NoNormalizer
 
 
 # Exercise both the unconstrained model and the divergence-free variant. They
@@ -43,6 +45,16 @@ def make_batch(batch_size, num_sim_params, device):
     )
 
 
+def make_sim_params_dict(model):
+    # forward_trajectory assembles its conditioning tensor from a physical sim-param
+    # dict; the values are arbitrary for a finiteness/shape check.
+    params = {"bulk_temp": 50.0, "sat_temp": 58.0}
+    params.update({param: random.random() for param in model.expected_fluid_params})
+    params["heater"] = {param: random.random() for param in model.expected_heater_params}
+    params.update({param: random.random() for param in model.expected_global_params})
+    return params
+
+
 @pytest.mark.parametrize("device", ["cpu"])
 def test_nucleus2(device, model):
     if device == "cpu":
@@ -79,11 +91,12 @@ def test_nucleus2_forward_trajectory(
     batch = make_batch(batch_size, model.num_sim_params, device)
 
     with torch.inference_mode():
-        # Pass the first two args positionally: the div-free model names the
-        # second parameter `normalized_sim_params` rather than `sim_params`.
+        # forward_trajectory runs in physical space and normalizes internally; an
+        # identity normalizer keeps the random-input finiteness/shape checks valid.
         trajectory = model.forward_trajectory(
             batch.input,
-            batch.sim_params_tensor,
+            make_sim_params_dict(model),
+            NoNormalizer(),
             dx=1/4,
             input_time_window_size=8,
             output_time_window_size=8,

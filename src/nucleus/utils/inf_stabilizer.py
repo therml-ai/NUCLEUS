@@ -1,17 +1,12 @@
-from dataclasses import dataclass
-
 import torch
 
-@dataclass
-class NormalizedTempLimits:
-    sat_temp: float
-    wall_temp: float
-    sdf_zero_levelset: float
+def clip_temp_by_phase(temp, sdf, sat_temp: float, wall_temp: float):
+    """Clamp temperature by phase using physical (unnormalized) fields.
 
-def clip_temp_by_phase(temp, sdf, limit: NormalizedTempLimits):
-    # temp should never be above the heater temperature
-    temp = torch.clamp(temp, max=limit.wall_temp + 1e-8)
-    # vapor should not be below the sat temp, but the liquid
-    # may be above the sat temp. (i.e., just above heater)
-    temp = torch.where(sdf > -limit.sdf_zero_levelset, torch.clamp(temp, min=limit.sat_temp - 1e-8), temp)
+    The interface is the SDF zero level set, so vapor is ``sdf > 0``. Temperature
+    never exceeds the heater wall temperature; vapor is floored at the saturation
+    temperature, while liquid near the heater may sit above it.
+    """
+    temp = torch.clamp(temp, max=wall_temp)
+    temp = torch.where(sdf > 0, torch.clamp(temp, min=sat_temp), temp)
     return temp
