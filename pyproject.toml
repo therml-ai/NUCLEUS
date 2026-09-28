@@ -32,6 +32,7 @@ dependencies = [
     "imgcat>=0.6.0",
     "python-dotenv>=1.2.2,<2",
     "webdataset",
+    "boiling-data[torch]",
 ]
 
 [dependency-groups]
@@ -87,6 +88,7 @@ natten = [
   { index = "natten", extra = "cu128" },
   { index = "natten", extra = "cu130" },
 ]
+boiling-data = { git = "https://github.com/therml-ai/boiling-data", branch = "main" }
 
 [[tool.uv.index]]
 name = "pytorch-cu128"
