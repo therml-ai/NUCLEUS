@@ -9,7 +9,8 @@ def set_fp32_precision():
     #torch.backends.cudnn.fp32_precision = "tf32"
     #torch.backends.cudnn.conv.fp32_precision = "tf32"
     
-    torch.backends.fp32_precision = "ieee"
-    torch.backends.cuda.matmul.fp32_precision = "ieee"
-    torch.backends.cudnn.fp32_precision = "tf32"
-    torch.backends.cudnn.conv.fp32_precision = "tf32"
+    #torch.backends.fp32_precision = "ieee"
+    #torch.backends.cuda.matmul.fp32_precision = "ieee"
+    #torch.backends.cudnn.fp32_precision = "tf32"
+    #torch.backends.cudnn.conv.fp32_precision = "tf32"
+    pass

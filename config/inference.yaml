@@ -1,0 +1,25 @@
+checkpoint_path:
+commit_sha:
+
+# Root path for dataset files, referenced as ${data_dir} in the data_cfg paths.
+# Mandatory and unset by default so it must be set by users in this file or 
+# provided on the CLI, e.g. data_dir=/path/to/BubbleML_2
+data_dir: ???
+log_dir: ???
+
+nodes: 1
+devices: 1
+
+history_time_window: 8
+future_time_window: 8
+time_step: 1
+start_time: 300
+trajectory_steps: 300
+
+defaults:
+  - _self_
+  - data_cfg: poolboiling64
+  - model_cfg: nucleus2/nucleus2_experiment
+  - optim_cfg: adamw
+  - scheduler_cfg: cosine_warmup
+  - normalizer_cfg: standard

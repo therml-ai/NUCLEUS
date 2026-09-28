@@ -111,15 +111,13 @@ class RouterBase(nn.Module):
         
     def forward(self, x, router_bias: Optional[torch.Tensor] = None):       
         router_logits = self.router(x)
-
-        score = torch.clamp(router_logits, min=-2, max=2)
         
         if router_bias is not None:
-            biased_score = score + router_bias[None, :]
+            biased_score = router_logits + router_bias[None, :]
             _, topk_indices = torch.topk(biased_score, k=self.topk, dim=-1)
-            topk_scores = torch.gather(score, dim=-1, index=topk_indices)
+            topk_scores = torch.gather(router_logits, dim=-1, index=topk_indices)
         else:
-            topk_scores, topk_indices = torch.topk(score, k=self.topk, dim=-1)
+            topk_scores, topk_indices = torch.topk(router_logits, k=self.topk, dim=-1)
         
         topk_probs = F.softmax(topk_scores, dim=-1)
                 
@@ -238,9 +236,93 @@ class TopkMoEOutput:
             num_experts=self.num_experts,
         )
 
-# grouped_mm is cannot be cuda-graphed due to a host-device transfer, so cannot use "reduced-overhead"
-# (The offsets `offs` are moved to the CPU, and then moved back to the device when iterating over each gemm.)
-@torch.compile(fullgraph=True)
+class TopkMoE_grouped_mm(nn.Module):
+    """
+    MoE layer using torch.nn.functional.grouped_mm.
+
+    Tokens are sorted by expert assignment and concatenated; grouped_mm
+    dispatches a single fused kernel across all expert GEMMs using cumulative
+    offsets (offs) to delimit each group. This avoids the per-expert kernel
+    launches of the explicit loop, but note that grouped_mm internally moves
+    offs to the CPU — so this variant is NOT compatible with CUDA graphs /
+    reduce-overhead compilation. Use TopkMoE (Triton kernel) for that.
+    """
+    def __init__(
+        self,
+        num_experts: int,
+        hidden_dim: int,
+        intermediate_dim: int,
+        topk: int,
+        router: RouterBase,
+    ):
+        super().__init__()
+        self.num_experts = num_experts
+        self.hidden_dim = hidden_dim
+        self.intermediate_dim = intermediate_dim
+        self.topk = topk
+
+        self.w1 = nn.Parameter(torch.empty(num_experts, intermediate_dim, hidden_dim, dtype=torch.bfloat16))
+        self.w2 = nn.Parameter(torch.empty(num_experts, hidden_dim, intermediate_dim, dtype=torch.bfloat16))
+        self.reset_parameters()
+
+        self.router = router
+
+    def reset_parameters(self):
+        with torch.no_grad():
+            gain = math.sqrt(2)
+            self.w1.data.normal_(0, gain / math.sqrt(self.hidden_dim))
+            self.w2.data.normal_(0, gain / math.sqrt(self.intermediate_dim))
+
+    def forward(self, x: torch.Tensor) -> "TopkMoEOutput":
+        assert x.dim() == 5, "Input tensor must be of shape (B, T, H, W, C)"
+        B, T, H, W, C = x.shape
+        input_shape = x.shape
+        x_flat = x.view(-1, C)  # (N, C)
+        N = x_flat.shape[0]
+
+        router_output = self.router(x_flat.to(torch.float32))
+        topk_indices = router_output.topk_indices.view(N, self.topk)
+        topk_probs   = router_output.topk_probs.view(N, self.topk).to(torch.bfloat16)
+
+        # Sort tokens by expert so groups are contiguous for grouped_mm.
+        token_ids  = torch.arange(N, device=x.device).unsqueeze(1).expand(-1, self.topk).reshape(-1)
+        expert_ids = topk_indices.reshape(-1)       # (N*topk,)
+        probs_flat = topk_probs.reshape(-1)          # (N*topk,)
+
+        sort_idx          = expert_ids.argsort(stable=True)
+        token_ids_sorted  = token_ids[sort_idx]
+        expert_ids_sorted = expert_ids[sort_idx]
+        probs_sorted      = probs_flat[sort_idx]
+
+        x_sorted = x_flat[token_ids_sorted]          # (N*topk, C)
+
+        # offs: cumulative token counts per expert, shape (E,) int32.
+        # grouped_mm uses these as group-boundary offsets into x_sorted.
+        tokens_per_expert = torch.bincount(expert_ids_sorted, minlength=self.num_experts)
+        offs = tokens_per_expert.cumsum(0).to(torch.int32)  # (E,)
+
+        # First grouped GEMM: x_sorted @ w1^T  →  (N*topk, intermediate)
+        # w1 is (E, intermediate, C); grouped_mm expects B as (E, C, intermediate) = w1.mT
+        h = F.gelu(F.grouped_mm(x_sorted, self.w1.mT, offs=offs))
+
+        # Second grouped GEMM: h @ w2^T  →  (N*topk, C)
+        # w2 is (E, C, intermediate); grouped_mm expects (E, intermediate, C) = w2.mT
+        out_sorted = F.grouped_mm(h, self.w2.mT, offs=offs)
+
+        # Scatter weighted outputs back to original token positions.
+        out = torch.zeros_like(x_flat)
+        out.index_add_(0, token_ids_sorted, out_sorted * probs_sorted.unsqueeze(-1))
+
+        router_output.topk_indices = topk_indices.view(B, T, H, W, self.topk).detach()
+
+        return TopkMoEOutput(
+            out=out.view(input_shape),
+            router_output=router_output,
+            topk=self.topk,
+            num_experts=self.num_experts,
+        )
+
+
 class TopkMoE(nn.Module):
     def __init__(
         self,
@@ -275,35 +357,36 @@ class TopkMoE(nn.Module):
         """
         assert x.dim() == 5, "Input tensor must be of shape (B, T, H, W, C)"
         B, T, H, W, C = x.shape
-        
-        # flatten x because the MoE is applied to each patch independently.
-        input_shape = x.shape
-        x = x.view(-1, input_shape[-1])
-        batch_size = x.shape[0]
-        
-        router_output = self.router(x)
-        
-        # NOTE with torch.compile(fullgraph=True), the grouped gemm kernel does not support torch.float32, 
-        # so the input data has to be truncated to bfloat 16.
-        groups = x.to(torch.bfloat16)[router_output.indices // self.topk]        
 
-        groups = torch.nn.functional.grouped_mm(groups, self.w1.mT, offs=router_output.group_indices)
-        groups = F.gelu(groups)
-        groups = torch.nn.functional.grouped_mm(groups, self.w2.mT, offs=router_output.group_indices)
-        
-        # Scatter the tokens to [B, topk, hidden_dim]
-        scattered = torch.empty_like(groups)
-        scattered[router_output.indices] = groups
-        scattered = scattered.view(batch_size, self.topk, self.hidden_dim)
-        
-        # reduce the output tokens and scale by the routing probability
-        out = (scattered * router_output.topk_probs.unsqueeze(-1)).sum(dim=1).view(input_shape)
-        
-        # Convert to convenient shape for visualization.
-        router_output.topk_indices = router_output.topk_indices.view(B, T, H, W, self.topk).detach()
-        
+        input_shape = x.shape
+        x_flat = x.view(-1, input_shape[-1])  # (N, C)
+        N = x_flat.shape[0]
+
+        # Router is always applied in float32 to help stability.
+        router_output = self.router(x_flat.to(torch.float32))
+
+        topk_indices = router_output.topk_indices.view(N, self.topk)
+        topk_probs = router_output.topk_probs.view(N, self.topk).to(torch.bfloat16)
+
+        out = torch.zeros_like(x_flat)
+
+        # Iterate over each expert. torch.compile unrolls this static loop.
+        # Avoids grouped_mm's internal device-to-host transfer of group offsets.
+        for e in range(self.num_experts):
+            # Routing weight for this expert per token (0 if token not routed here).
+            expert_weights = (topk_probs * (topk_indices == e)).sum(dim=1)  # (N,)
+            token_idx = expert_weights.nonzero(as_tuple=True)[0]            # (n_e,)
+
+            x_e = x_flat[token_idx]                                     # (n_e, C)
+            h = F.gelu(x_e @ self.w1[e].mT)                             # (n_e, intermediate)
+            out_e = h @ self.w2[e].mT                                   # (n_e, C)
+
+            out.index_add_(0, token_idx, out_e * expert_weights[token_idx].unsqueeze(-1))
+
+        router_output.topk_indices = topk_indices.view(B, T, H, W, self.topk).detach()
+
         return TopkMoEOutput(
-            out=out.to(torch.float32), 
+            out=out.view(input_shape),
             router_output=router_output,
             topk=self.topk,
             num_experts=self.num_experts,

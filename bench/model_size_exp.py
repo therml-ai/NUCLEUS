@@ -185,8 +185,8 @@ EXACT_MODEL_CONFIGS = [
 tchw_batch = CollatedBatch(
     input=torch.randn(B, T, C, H, W, device=device),
     target=None,
-    fluid_params_dict={},
-    fluid_params_tensor=torch.randn(B, NUM_FLUID_PARAMS, device=device),
+    sim_params_dict={},
+    sim_params_tensor=torch.randn(B, NUM_FLUID_PARAMS, device=device),
     x_grid=torch.linspace(1, 1, W, device=device),
     y_grid=torch.linspace(1, 1, H, device=device),
     dx=torch.tensor(1.0 / W, device=device),

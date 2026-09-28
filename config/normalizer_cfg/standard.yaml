@@ -9,7 +9,7 @@ velx_mean: -0.004889965940161482
 velx_std: 0.44531233555244765
 vely_mean: 0.05534353353964971
 vely_std: 0.5429765872331136
-fluid_params_min:
+sim_params_min:
   bulk_temp: -204
   cpgas: 0.5501
   dt: 0.1
@@ -47,7 +47,7 @@ fluid_params_min:
   y_max: 16.0
   y_min: 0.0
 
-fluid_params_max:
+sim_params_max:
   bulk_temp: 58
   cpgas: 0.7997
   dt: 5.0

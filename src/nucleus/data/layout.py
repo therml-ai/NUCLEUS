@@ -17,6 +17,11 @@ def convert_layout(data: torch.Tensor, target_layout: str, source_layout: str = 
     assert data.dim() >= 4, f"Data must have at least 4 dimensions, got {data.dim()}"
     return einops.rearrange(data, f"... {source_layout} -> ... {target_layout}")
 
+def time_dim(layout: str):
+    assert "t" in layout
+    return layout.split(" ").index("t")
+
+
 def channel_dim(layout: str):
     assert "c" in layout
     return layout.split(" ").index("c")

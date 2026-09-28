@@ -32,8 +32,8 @@ def test_moe_dpot(device):
     batch = CollatedBatch(
         input=torch.randn(4, 64, 64, 8, 4).to(device).requires_grad_(True),
         target=None,
-        fluid_params_dict={},
-        fluid_params_tensor=torch.randn(4, 16, device=device),
+        sim_params_dict={},
+        sim_params_tensor=torch.randn(4, 16, device=device),
         x_grid=torch.randn(64, device=device),
         y_grid=torch.randn(64, device=device),
         dx=torch.tensor(0.01, device=device),

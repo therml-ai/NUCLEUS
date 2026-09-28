@@ -137,3 +137,58 @@ class L1RelativeLoss(nn.Module):
         
         # Add each loss and take mean over batch dimensions.
         return (sdf_loss + temp_loss + velx_loss + vely_loss).mean()
+    
+def field_gradient_loss(pred_fields: torch.Tensor, target_fields: torch.Tensor) -> torch.Tensor:
+    r"""
+    L1 loss on the spatial gradients of the fields, for tensors shaped
+    (B, T, H, W, C). Penalizing slope mismatch rather than only point values
+    discourages the over-smoothing.
+    """
+    spatial_dims = (-3, -2)
+    pred_grad_y, pred_grad_x = torch.gradient(pred_fields, dim=spatial_dims)
+    target_grad_y, target_grad_x = torch.gradient(target_fields, dim=spatial_dims)
+    return (
+        torch.nn.functional.l1_loss(pred_grad_x, target_grad_x)
+        + torch.nn.functional.l1_loss(pred_grad_y, target_grad_y)
+    )
+
+def sdf_sign_bce_loss(pred_sdf: torch.Tensor, target_sdf: torch.Tensor, vapor_weight: float) -> torch.Tensor:
+    """Binary cross-entropy between the predicted and target SDF's sign (phase:
+    sdf > 0 is vapor, sdf < 0 is liquid), both in physical units. Treats the
+    physical sdf value directly as a logit, so a sign (phase) misclassification is
+    penalized much more sharply than an L1 magnitude error would -- a single
+    sign-flipped pixel barely moves an L1 loss but is a large BCE error.
+    vapor_weight up-weights the positive (vapor) class, which is a small fraction
+    of the domain (see phase_bce_with_logits_loss).
+    """
+    target_phase = (target_sdf > 0).to(pred_sdf.dtype)
+    pos_weight = torch.tensor(vapor_weight, device=target_sdf.device)
+    return torch.nn.functional.binary_cross_entropy_with_logits(
+        pred_sdf, target_phase, pos_weight=pos_weight
+    )
+
+
+def phase_bce_with_logits_loss(
+    input_phase, 
+    target_phase, 
+    pred_phase_logits, 
+    nucleation_weight,
+    vapor_weight
+):
+    # use higher weight for cells that should have phase change
+    # I.e., nucleation or bubble movement.
+    all_phase = torch.cat((input_phase, target_phase), dim=1)
+    next_phase = all_phase[:, 1:] 
+    prev_phase = all_phase[:, :-1]
+    phase_change_mask = (next_phase != prev_phase)[:, -target_phase.shape[1]:]
+    phase_change_weight = torch.where(phase_change_mask, nucleation_weight, 1.0)
+    
+    # vapor is only ~5% of the domain, so it should be up weighted
+    pos_weight = torch.tensor(vapor_weight, device=target_phase.device)
+    
+    return torch.nn.functional.binary_cross_entropy_with_logits(
+        pred_phase_logits, 
+        target_phase.to(torch.float32), 
+        weight=phase_change_weight,
+        pos_weight=pos_weight
+    )

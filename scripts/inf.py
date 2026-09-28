@@ -1,97 +1,75 @@
 import os
 import pathlib
 import torch
-from collections import OrderedDict
-from nucleus.models import get_model
+import h5py
+import json
+import numpy as np
 import hydra
 from omegaconf import DictConfig, OmegaConf
-from nucleus.data.normalize import get_normalizer
-from nucleus.test import run_test, TestResults
-from nucleus.plot.plotting import (
-    plot_rollout,
-    plot_rollout_stability,
-    plot_rollout_moe_overlay,
-    plot_distribution,
-)
-from nucleus.plot.plot_metrics import (
-    plot_simple_metrics,
-    plot_vapor_volume_at_height,
-    plot_bubble_counts,
-)
-from nucleus.utils.set_fp32_precision import set_fp32_precision
-from lightning import LightningModule
 
-@hydra.main(version_base=None, config_path="../config", config_name="default")
+from nucleus.models import load_model_from_checkpoint
+from nucleus.data.normalize import get_normalizer
+from nucleus.run_forward_trajectory import run_test, TestResults
+from nucleus.trajectory import Trajectory
+from nucleus.utils.set_fp32_precision import set_fp32_precision
+
+def save_trajectory_as_hdf5(path, trajectory):
+    with h5py.File(path, "w") as handle:
+        if isinstance(trajectory, Trajectory):
+            # Natural-grid fields: velocities on their staggered faces. Drop the
+            # leading batch dim.
+            fields = {
+                "dfun": trajectory.sdf,
+                "temperature": trajectory.temp,
+                "velfacex": trajectory.velx,
+                "velfacey": trajectory.vely,
+            }
+            for key, field in fields.items():
+                handle.create_dataset(key, data=field.squeeze(0).cpu().detach().numpy())
+        else:
+            FIELDS = ["dfun", "temperature", "velx", "vely"]
+            trajectory_np = trajectory.cpu().detach().numpy()
+            for key, field in zip(FIELDS, np.split(trajectory_np, trajectory_np.shape[-1], -1)):
+                handle.create_dataset(key, data=field)
+
+@hydra.main(version_base=None, config_path="../config", config_name="inference")
 def main(cfg: DictConfig):
     set_fp32_precision()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model_name = cfg.model_cfg.name
-
-    # model_kwargs = OmegaConf.to_container(cfg.model_cfg.params, resolve=True)
-
-
-    model_kwargs = {
-        "input_fields": 4,
-        "output_fields": 4,
-        "patch_size": cfg.model_cfg.params.patch_size,
-        "embed_dim": cfg.model_cfg.params.embed_dim,
-        "processor_blocks": cfg.model_cfg.params.processor_blocks,
-        "num_heads": cfg.model_cfg.params.num_heads,
-        "num_fluid_params": cfg.model_cfg.params.num_fluid_params,
-    }
-
-    # model_kwargs = OmegaConf.to_container(cfg.model_cfg.params, resolve=True)
-
-    if cfg.model_cfg.params.get("num_experts", None) is not None:
-        model_kwargs["num_experts"] = cfg.model_cfg.params.num_experts
-        model_kwargs["topk"] = cfg.model_cfg.params.topk
-
-
-    model = get_model(model_name, **model_kwargs)
+    # Pass model_cfg so pre-"_extra_state" checkpoints (no embedded config) can still
+    # be rebuilt; it is ignored for checkpoints that embed their own config.
+    model = load_model_from_checkpoint(
+        cfg.checkpoint_path,
+        map_location=device,
+        model_cfg=OmegaConf.to_container(cfg.model_cfg, resolve=True),
+    )
     model = model.to(device)
-    model_data = torch.load(cfg.checkpoint_path, map_location=device, weights_only=False)
-            
-    weight_state_dict = OrderedDict()
-    for key, val in model_data["state_dict"].items():
-        print(key, val.shape)
-        if isinstance(model, LightningModule):
-            name = key
-        else:
-            name = key[6:]
-        weight_state_dict[name] = val
-    del model_data
-    model.load_state_dict(weight_state_dict)
     model.eval()
-
 
     normalizer = get_normalizer(OmegaConf.to_container(cfg.normalizer_cfg, resolve=True))
     
     # Rollouts are saved in the directory containing the checkpoint
     save_root = pathlib.Path(cfg.checkpoint_path).parent / "rollouts"
     save_root.mkdir(parents=True, exist_ok=True)
-    all_test_results = []
+    
+    with open(save_root / "config.yaml", "w") as handle:
+        OmegaConf.save(cfg, f=handle.name)
+    
     for test_file_path in cfg.data_cfg.test_paths:
-        test_results: TestResults = run_test(cfg, model, normalizer, test_file_path, max_timesteps=1000)
-        all_test_results.append(test_results)
-
-        save_dir = save_root / f"{test_results.case_name}"
-        save_dir.mkdir(parents=True, exist_ok=True)
-        plot_rollout(
-           save_dir=save_dir,
-           rollout=test_results.preds,
-           test_results=test_results,
-           step_size=5,
-            include_ground_truth=True,
-        )
-        plot_distribution(
-            save_dir=save_dir,
-            rollout=test_results.preds,
-            test_results=test_results,
-        )
+        test_results: TestResults = run_test(cfg, model, normalizer, test_file_path, trajectory_steps=cfg.trajectory_steps)    
+        rollout_save_root = save_root / test_results.case_name
+        rollout_save_root.mkdir(parents=True, exist_ok=True)
+        model_save_path = rollout_save_root / "model_cfg.json"
+        with open(model_save_path, "w") as handle:
+            OmegaConf.save(config=cfg.model_cfg, f=handle.name)
+        save_trajectory_as_hdf5(rollout_save_root / "pred_trajectory.hdf5", test_results.preds)
+        save_trajectory_as_hdf5(rollout_save_root / "gt_trajectory.hdf5", test_results.targets)
+        json_save_path = rollout_save_root / "sim_params.json"
+        with open(json_save_path, "w") as handle:
+            json.dump(test_results.sim_params, handle)
         
-    torch.save(all_test_results, save_root / "test_results_reinit.pt")
 if __name__ == "__main__":
     # pylint: disable=no-value-for-parameter
     main()

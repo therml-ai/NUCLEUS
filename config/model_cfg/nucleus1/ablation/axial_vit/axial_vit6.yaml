@@ -4,5 +4,4 @@ params:
   patch_size: 4
   embed_dim: 512
   processor_blocks: 8
-  num_heads: 8 
-  num_fluid_params: 16
+  num_heads: 8

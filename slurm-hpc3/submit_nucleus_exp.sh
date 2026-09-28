@@ -1,11 +1,12 @@
 #!/bin/bash
 #SBATCH -A amowli_lab_gpu
-#SBATCH -p free-gpu
+#SBATCH -p free-gpu32
 #SBATCH --job-name=train-nucleus-exp
 #SBATCH -o slurm-%x-%j.out
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=12
-#SBATCH --gres=gpu:A30:1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=100GB
+#SBATCH --gres=gpu:RTX6000:1
 #SBATCH --time=12:59:00
 
 uv venv $TMPDIR/NUCLEUS
@@ -16,12 +17,26 @@ export PYTHONPYCACHE_DIR=$TMPDIR/pycache/
 # 2. --active syncs to the currently activated environment. Otherwise, uv
 #    tries to make another environment in the current directory.
 # 3. --extra just gets stuff in pyproject.toml optional-dependencies
-uv sync --no-cache --active --extra cu128
+uv sync --no-cache --active --extra cu130
 uv pip install -e .
-uv pip install natten==0.21.5+torch2100cu128 -f https://whl.natten.org
 
 python scripts/train.py \
-    model_cfg=neighbor_moe/neighbor_moe_exp \
-    data_cfg=poolboiling \
-    normalizer_cfg=standard \
+    model_cfg=nucleus2/nucleus2_divfree \
+    model_cfg.params.processor_blocks=8 \
+    model_cfg.params.embed_dim=512 \
+    model_cfg.params.num_experts=6 \
+    model_cfg.params.moe_intermediate_dim=1024 \
     model_cfg.params.patch_size=16 \
+    model_cfg.params.patching="Linear" \
+    model_cfg.params.activation_dtype="float32" \
+    data_cfg=poolboiling \
+    normalizer_cfg=divfree \
+    batch_size=64 \
+    accumulate_grad_batches=2 \
+    optim_cfg.params.lr=1e-3 \
+    optim_cfg.params.weight_decay=1e-3 \
+    max_steps=100000 \
+    scheduler_cfg=trapezoidal \
+    scheduler_cfg.params.warmup=2000 \
+    scheduler_cfg.params.cooldown=20000 \
+    log_dir=/pub/afeeney/nucleus_logs

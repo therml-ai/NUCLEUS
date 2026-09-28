@@ -116,8 +116,8 @@ def make_batch(resolution: int) -> CollatedBatch:
     return CollatedBatch(
         input=torch.randn(BATCH_SIZE, TIME_WINDOW, CHANNELS, resolution, resolution, device=DEVICE),
         target=None,
-        fluid_params_dict={},
-        fluid_params_tensor=torch.randn(BATCH_SIZE, NUM_FLUID_PARAMS, device=DEVICE),
+        sim_params_dict={},
+        sim_params_tensor=torch.randn(BATCH_SIZE, NUM_FLUID_PARAMS, device=DEVICE),
         x_grid=torch.linspace(1, 1, resolution, device=DEVICE),
         y_grid=torch.linspace(1, 1, resolution, device=DEVICE),
         dx=torch.tensor(1.0 / resolution, device=DEVICE),

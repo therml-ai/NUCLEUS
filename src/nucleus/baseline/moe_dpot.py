@@ -615,7 +615,7 @@ class MoEPOTNet(L.LightningModule):
         table = [f"{liquid}_{setup}" for setup in setups for liquid in liquids]
         labels = []
         labels_one_hot = []
-        for i, d in enumerate(batch.fluid_params_dict):
+        for i, d in enumerate(batch.sim_params_dict):
             setup = d["setup"]
             liquid = d["liquid"]
             key = f"{liquid}_{setup}"

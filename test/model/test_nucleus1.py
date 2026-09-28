@@ -16,29 +16,35 @@ _VIT_MODELS = [
     "nucleus1_neighbor_vit",
 ]
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="model requires cuda")
-@pytest.mark.parametrize("model_name", _MOE_MODELS)
-@pytest.mark.parametrize("device", ["cuda"])
-def test_nucleus1_moe(device, model_name):
-    
-    model = get_model(model_name,
+def _get_model(model_name):
+    kwargs = dict(
         input_fields=4,
         output_fields=4,
         patch_size=4,
         embed_dim=128,
         num_heads=2,
-        processor_blocks=4,
-        num_fluid_params=16,
-        num_experts=4,
-        topk=2,
+        processor_blocks=2,
     )
+    if "moe" in model_name:
+        kwargs["num_experts"] = 4
+        kwargs["topk"] = 2
+    return get_model(model_name, **kwargs)
+
+@pytest.mark.parametrize("model_name", _MOE_MODELS)
+@pytest.mark.parametrize("device", ["cpu"])
+def test_nucleus1_moe(device, model_name):
+    
+    if model_name in ("nucleus1_moe") and device == "cpu":
+        pytest.skip("flex attention not supported on CPU")
+    
+    model = _get_model(model_name)
     model = model.to(device)
     
     batch = CollatedBatch(
         input=torch.randn(4, 8, 4, 64, 64, device=device),
         target=None,
-        fluid_params_dict={},
-        fluid_params_tensor=torch.randn(4, 16, device=device),
+        sim_params_dict={},
+        sim_params_tensor=torch.randn(4, model.num_sim_params, device=device),
         x_grid=torch.randn(64, device=device),
         y_grid=torch.randn(64, device=device),
         dx=torch.tensor(0.01, device=device),
@@ -56,27 +62,21 @@ def test_nucleus1_moe(device, model_name):
         if param.grad is not None:
             assert torch.all(torch.isfinite(param.grad))
             
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="model requires cuda")
 @pytest.mark.parametrize("model_name", _VIT_MODELS)
-@pytest.mark.parametrize("device", ["cuda"])
+@pytest.mark.parametrize("device", ["cpu"])
 def test_nucleus1_vit(device, model_name):
     
-    model = get_model(model_name,
-        input_fields=4,
-        output_fields=4,
-        patch_size=4,
-        embed_dim=128,
-        num_heads=2,
-        processor_blocks=2,
-        num_fluid_params=16,
-    )
+    if model_name in ("nucleus1_neighbor_vit") and device == "cpu":
+        pytest.skip("flex attention not supported on CPU")
+
+    model = _get_model(model_name)
     model = model.to(device)
     
     batch = CollatedBatch(
         input=torch.randn(4, 8, 4, 64, 64, device=device),
         target=None,
-        fluid_params_dict={},
-        fluid_params_tensor=torch.randn(4, 16, device=device),
+        sim_params_dict={},
+        sim_params_tensor=torch.randn(4, model.num_sim_params, device=device),
         x_grid=torch.randn(64, device=device),
         y_grid=torch.randn(64, device=device),
         dx=torch.tensor(0.01, device=device),
@@ -92,3 +92,48 @@ def test_nucleus1_vit(device, model_name):
     for param in model.parameters():
         if param.grad is not None:
             assert torch.all(torch.isfinite(param.grad))
+            
+@pytest.mark.parametrize("model_name", _VIT_MODELS + _MOE_MODELS)
+@pytest.mark.parametrize("device", ["cpu"])
+@pytest.mark.parametrize("batch_size", [1, 4])
+@pytest.mark.parametrize("trajectory_steps", [8, 24])
+@pytest.mark.parametrize("use_sdf_reinit", [True, False])
+def test_nucleus1_forward_trajectory(
+    device,
+    model_name, 
+    batch_size,
+    trajectory_steps,
+    use_sdf_reinit,
+):
+    model = _get_model(model_name)
+    model = model.to(device)   
+    batch = CollatedBatch(
+        input=torch.randn(batch_size, 8, 4, 64, 64, device=device),
+        target=None,
+        sim_params_dict={},
+        sim_params_tensor=torch.randn(batch_size, model.num_sim_params, device=device),
+        x_grid=torch.randn(64, device=device),
+        y_grid=torch.randn(64, device=device),
+        dx=torch.tensor(0.01, device=device),
+        dy=torch.tensor(0.01, device=device),
+    )
+    
+    return_moe_outputs = "_moe" in model_name
+    with torch.inference_mode():
+        trajectory = model.forward_trajectory(
+            initial_state=batch.input,
+            sim_params=batch.sim_params_tensor,
+            dx=1/4,
+            input_time_window_size=8,
+            output_time_window_size=8,
+            trajectory_steps=trajectory_steps,
+            use_sdf_reinit=use_sdf_reinit,
+            return_moe_outputs=return_moe_outputs
+        )
+    if return_moe_outputs:
+        trajectory, moe_outputs = trajectory
+    
+    assert trajectory.isfinite().all()
+    assert trajectory.shape[0] == batch_size
+    assert trajectory.shape[1] == trajectory_steps
+    assert trajectory.shape[2] == 4
