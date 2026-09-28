@@ -4,11 +4,8 @@ import torch
 
 
 def _central_difference(field: torch.Tensor, spacing: float, dim: int) -> torch.Tensor:
-    """Explicit finite-difference derivative of a cell-centered field along ``dim``:
-    a second-order central difference ``(f[i+1] - f[i-1]) / (2h)`` in the interior and
-    a first-order one-sided difference at the two boundary cells. Built with
-    ``narrow`` + ``cat`` (no in-place writes) so it differentiates and compiles cleanly.
-    """
+    """Central difference along ``dim``, one-sided at the two boundary cells."""
+    # narrow + cat rather than in-place writes so it differentiates and compiles cleanly
     n = field.size(dim)
     interior = (field.narrow(dim, 2, n - 2) - field.narrow(dim, 0, n - 2)) / (2.0 * spacing)
     first = (field.narrow(dim, 1, 1) - field.narrow(dim, 0, 1)) / spacing
@@ -19,21 +16,9 @@ def _central_difference(field: torch.Tensor, spacing: float, dim: int) -> torch.
 def interface_normals(
     sdf: torch.Tensor, dx: float, dy: float, eps: float = 1e-12
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """normal direction of the SDF, which can be used to get the normal of the
-       interface (the zero level set of the SDF).
-    Args:
-        sdf: cell-centered signed distance, shape ``(..., H, W)``. x is the last
-            axis (width) and y the second-to-last (height).
-        dx: cell spacing in x.
-        dy: cell spacing in y.
-        eps: floor on ``|grad(sdf)|``. Where the gradient vanishes -- flat regions
-            far from the interface, or local extrema -- the normal is undefined;
-            the floor makes those cells return a near-zero vector rather than
-            dividing by zero.
-
-    Returns:
-        ``(normal_x, normal_y)``, each shape ``(..., H, W)``.
-    """
+    """``grad(sdf) / |grad(sdf)|`` on ``(..., H, W)``; returns ``(normal_x, normal_y)``
+    of the same shape. ``eps`` floors the magnitude so flat regions give a near-zero
+    vector instead of dividing by zero."""
     grad_x = _central_difference(sdf, dx, dim=-1)
     grad_y = _central_difference(sdf, dy, dim=-2)
     magnitude = torch.sqrt(grad_x**2 + grad_y**2).clamp_min(eps)
@@ -41,11 +26,8 @@ def interface_normals(
 
 
 def interface_mask(sdf):
-    r"""
-    Cells adjacent to the zero level set: a cell is marked when any of its four
-    neighbors lies in the other phase (the sign of the SDF differs). Works for any
-    shape (..., H, W) and stays on the input's device.
-    """
+    """Cells with a 4-neighbour in the other phase. ``(..., H, W)`` -> bool of the
+    same shape."""
     assert sdf.dim() >= 2, "SDF must be of shape (..., H, W)"
     signs = torch.sign(sdf)
     interface = torch.zeros_like(sdf, dtype=torch.bool)
@@ -70,8 +52,6 @@ def liquid_mask(sdf):
 
 
 def band_mask(sdf: torch.Tensor, band_width: float) -> torch.Tensor:
-    """Cells whose center lies within ``band_width`` (a distance, in the SDF's
-    units) of the interface, i.e. ``|sdf| <= band_width``. Shape ``(..., H, W)``.
-    """
+    """``|sdf| <= band_width`` on ``(..., H, W)``."""
     return sdf.abs() <= band_width
 

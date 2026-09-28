@@ -1,71 +1,106 @@
 from typing import Tuple
-import math
 
 import torch
+import torch.nn.functional as F
 
-from nucleus.physics.sdf import (
-    band_mask,
-    interface_normals,
-    interface_mask,
-    liquid_mask,
-    vapor_mask,
+from nucleus.physics.extrapolate_flux import extrapolate_phase_fluxes
+from nucleus.physics.guard_cells import (
+    add_halo, add_level_set_halo, add_temperature_halo, crop_halo, refill_guard_cells,
 )
-from nucleus.physics.temp_grad import vapor_temp_grad, liquid_temp_grad
-from nucleus.physics.extrapolate_flux import extrapolate_phase_flux
+from nucleus.physics.phase_props import level_set_normals, min_cell_diag, smooth_density
+from nucleus.physics.temp_grad import temp_gfm
 
-DEFAULT_BAND_CELLS = 4
+# Flash-X defaults, confirmed against the stored BubbleML fields: 4 or 6 extrapolation
+# iterations are ~8x worse than 5, and a smear of 1.0 reproduces rhoc 24x worse than 1.5.
+DEFAULT_EXTRAP_ITERS = 5
+DEFAULT_PROP_SMEAR = 1.5
 
 
-def interface_heatflux(
-    temp: torch.Tensor, sdf: torch.Tensor, sat_temp, dx: float, dy: float,
-    band_cells: int = DEFAULT_BAND_CELLS, wall_temp=None, eps: float = 1e-13,
+def stefan_mass_flux(
+    liquid_flux: torch.Tensor, vapor_flux: torch.Tensor,
+    thermal_conductivity, stefan, reynolds, prandtl,
+) -> torch.Tensor:
+    """Stefan condition from ``Multiphase_setMassFlux`` on ``(..., H, W)`` fluxes:
+    ``St / (Re * Pr) * (liquid_flux + k_gas * vapor_flux)``. Negative is evaporation."""
+    return stefan / (reynolds * prandtl) * (liquid_flux + thermal_conductivity * vapor_flux)
+
+
+def continuity_rhs(
+    rhoc: torch.Tensor, normal_x: torch.Tensor, normal_y: torch.Tensor,
+    mass_flux: torch.Tensor, dx: float, dy: float,
+) -> torch.Tensor:
+    """``mass_flux * n . grad(rhoc)`` with face-averaged ``rhoc``, from
+    ``mph_evapDivergence2d``. All inputs and the result are ``(..., H, W)``; the
+    result is zero on the 1-cell border and carries Flash-X's pressure-RHS sign,
+    opposite to ``div(u)``."""
+    center = (..., slice(1, -1), slice(1, -1))
+    rhoc_center = rhoc[center]
+    rho_right = (rhoc_center + rhoc[..., 1:-1, 2:]) / 2.0
+    rho_left = (rhoc_center + rhoc[..., 1:-1, :-2]) / 2.0
+    rho_up = (rhoc_center + rhoc[..., 2:, 1:-1]) / 2.0
+    rho_down = (rhoc_center + rhoc[..., :-2, 1:-1]) / 2.0
+
+    flux_x = mass_flux[center] * normal_x[center]
+    flux_y = mass_flux[center] * normal_y[center]
+    divergence = flux_x * (rho_right - rho_left) / dx + flux_y * (rho_up - rho_down) / dy
+    return F.pad(divergence, (1, 1, 1, 1))
+
+
+def _smoothed_density_and_normals(phi, dx, dy, rhogas, prop_smear, tol_normal):
+    """``(rhoc, normal_x, normal_y)`` as Flash-X builds them, each ``(..., H, W)``."""
+    rhoc, _ = smooth_density(phi, 1.0 / rhogas, 1.0, prop_smear * min_cell_diag(dx, dy))
+    normal_x, normal_y = level_set_normals(rhoc, dx, dy, tol_normal)
+    return rhoc, normal_x, normal_y
+
+
+def continuity_from_mass_flux(
+    mass_flux: torch.Tensor,
+    sdf: torch.Tensor,
+    dx: float,
+    dy: float,
+    rhogas,
+    contact_angle=None,
+    prop_smear: float = DEFAULT_PROP_SMEAR,
+    tol_normal: float = 1e-13,
+) -> torch.Tensor:
+    """``div(u)`` from phase change, ``-mass_flux * n . grad(1/rho)``, given a known
+    ``mass_flux`` (e.g. the one Flash-X stores). ``mass_flux`` and ``sdf`` are
+    ``(..., H, W)``, as is the result. Same density and normals as ``continuity``."""
+    # only 1-cell stencils are involved, so a 1-cell halo matches the full pipeline
+    halo = 1
+    phi = add_level_set_halo(sdf, halo, dy, contact_angle)
+    rhoc, normal_x, normal_y = _smoothed_density_and_normals(phi, dx, dy, rhogas, prop_smear, tol_normal)
+    divergence = continuity_rhs(
+        refill_guard_cells(rhoc, halo), normal_x, normal_y, add_halo(mass_flux, halo), dx, dy
+    )
+    return -crop_halo(divergence, halo)
+
+
+def _flashx_mass_transfer_pipeline(
+    temp, sdf, sat_temp, dx, dy, stefan, reynolds, prandtl, thermal_conductivity, rhogas,
+    wall_temp, contact_angle, n_extrap_iters, prop_smear, tol_normal, tol_temp,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Normal temperature gradient ``grad(T) . n`` on each side of the liquid/vapor interface.
+    """Flash-X's path from level set and temperature to ``Multiphase_divergence``,
+    on a haloed frame cropped back. Returns ``(mass_flux, divergence)``, each
+    ``(..., H, W)``."""
+    # the extrapolation reaches one cell per iteration and every stencil one more
+    halo = n_extrap_iters + 1
+    phi = add_level_set_halo(sdf, halo, dy, contact_angle)
+    temp = add_temperature_halo(temp, halo, wall_temp)
+    rhoc, normal_x, normal_y = _smoothed_density_and_normals(phi, dx, dy, rhogas, prop_smear, tol_normal)
 
-    Args:
-        temp: cell-centered temperature, shape ``(..., H, W)``.
-        sdf: cell-centered signed distance, shape ``(..., H, W)``. sdf < 0 is liquid,
-            sdf >= 0 is vapor.
-        sat_temp: interface (saturation) temperature; scalar or broadcastable to
-            ``temp``. Passed to the ghost-fluid gradients.
-        dx: cell spacing in x.
-        dy: cell spacing in y.
-        band_cells: how many cells each one-sided gradient is extrapolated into the
-            opposite phase, setting the width of the overlap band.
-        wall_temp: heater temperature at the bottom wall, in the same units as
-            ``temp``; applies a Dirichlet BC to the ghost-fluid gradients there.
-            ``None`` keeps a zero-gradient wall.
-        eps: floor passed through to ``interface_normals`` and the ghost fluid
-            gradients.
+    liquid_flux, vapor_flux = temp_gfm(phi, normal_x, normal_y, temp, sat_temp, dx, dy, tol_temp)
+    liquid_flux, vapor_flux = extrapolate_phase_fluxes(
+        phi, normal_x, normal_y, liquid_flux, vapor_flux, dx, dy, n_extrap_iters, n_guard=halo
+    )
+    mass_flux = stefan_mass_flux(liquid_flux, vapor_flux, thermal_conductivity, stefan, reynolds, prandtl)
+    # Flash-X evaluates rhoc on the interior and fills its guard cells by the generic
+    # wall mirror, so the divergence stencil at the wall must see that mirror. rhoc
+    # evaluated on the contact-angle-extended level set is right for the normals but
+    # overstates grad(rhoc) at the contact line by ~25%.
+    divergence = continuity_rhs(refill_guard_cells(rhoc, halo), normal_x, normal_y, mass_flux, dx, dy)
+    return crop_halo(mass_flux, halo), crop_halo(divergence, halo)
 
-    Returns:
-        ``(liquid_side, vapor_side)``, each shape ``(..., H, W)``, holding
-        ``grad(T) . n`` for that phase on the ``band_cells``-wide band and zero
-        outside it, so the two overlap on the band and can be subtracted there.
-    """
-    normal_x, normal_y = interface_normals(sdf, dx, dy, eps)
-    
-    liquid_grad_x, liquid_grad_y = liquid_temp_grad(temp, sdf, sat_temp, dx, dy, wall_temp, eps)
-    liquid_heat_flux = liquid_grad_x * normal_x + liquid_grad_y * normal_y
-
-    vapor_grad_x, vapor_grad_y = vapor_temp_grad(temp, sdf, sat_temp, dx, dy, wall_temp, eps)
-    vapor_heat_flux = vapor_grad_x * normal_x + vapor_grad_y * normal_y
-        
-    ext_liquid_heat_flux, ext_vapor_heat_flux = extrapolate_phase_flux(
-        liquid_heat_flux, vapor_heat_flux, sdf, normal_x, normal_y, dx, dy)
-
-    lmask = liquid_mask(sdf).to(temp.dtype)
-    vmask = vapor_mask(sdf).to(temp.dtype)
-    
-    #band_mask = (abs(sdf) < (band_cells * max(dx, dy))).to(temp.dtype)
-
-    # mask of the cells where some extrapolation across phases occurred.
-    extrapolated_cells = 1.0 #band_mask
-    #(
-    #    (lmask * ext_vapor_heat_flux != 0) | (vmask * ext_liquid_heat_flux != 0)
-    #).to(temp.dtype) * band_mask
-    
-    return ext_liquid_heat_flux * extrapolated_cells, ext_vapor_heat_flux * extrapolated_cells
 
 def mass_transfer(
     temp: torch.Tensor,
@@ -73,49 +108,32 @@ def mass_transfer(
     sat_temp,
     dx: float,
     dy: float,
-    stefan: float,
-    reynolds: float,
-    prandtl: float,
-    thermal_conductivity: float,
-    band_cells: int = DEFAULT_BAND_CELLS,
-    taper_decay_cells: float = 2.0,
+    stefan,
+    reynolds,
+    prandtl,
+    thermal_conductivity,
+    rhogas,
     wall_temp=None,
-    eps: float = 1e-12,
+    contact_angle=None,
+    n_extrap_iters: int = DEFAULT_EXTRAP_ITERS,
+    prop_smear: float = DEFAULT_PROP_SMEAR,
+    tol_normal: float = 1e-13,
+    tol_temp: float = 1e-2,
 ) -> torch.Tensor:
-    """
-    Args:
-        temp: cell-centered temperature, shape ``(..., H, W)``.
-        sdf: cell-centered signed distance, shape ``(..., H, W)``. sdf < 0 is liquid,
-            sdf >= 0 is vapor.
-        sat_temp: interface (saturation) temperature; scalar or broadcastable to
-            ``temp``.
-        dx: cell spacing in x.
-        dy: cell spacing in y.
-        stefan: Stefan number.
-        reynolds: Reynolds number.
-        prandtl: Prandtl number.
-        thermal_conductivity: vapor conductivity relative to the liquid.
-        band_cells: half-width, in cells, of the interface band the flux is spread
-            over (the extent over which the gradients are extrapolated).
-        taper_decay_cells: decay length, in cells, of the exponential taper. ~2
-            reproduces the Flash-X massflux decay (~0.6 per cell).
-        wall_temp: heater temperature at the bottom wall, in the same units as
-            ``temp``; applies a Dirichlet BC to the ghost-fluid gradients there.
-            ``None`` keeps a zero-gradient wall.
-        eps: floor passed through to the interface normals and ghost fluid
-            gradients.
+    """Interfacial mass flux from the Stefan condition, following Flash-X's
+    ``MultiphaseEvap`` step for step. ``temp`` and ``sdf`` (``< 0`` liquid) are
+    ``(..., H, W)`` with row 0 at the heater; the result has the same shape,
+    negative for evaporation and nonzero only on the band the extrapolation reaches.
 
-    Returns:
-        Physical non-dimensional mass flux, shape ``(..., H, W)``: the Stefan jump
-        on the ``band_cells``-wide band with an exponential taper, zero elsewhere.
-    """
-    # interface_heatflux already extrapolates each one-sided gradient across the
-    # band, so both are defined on the band and the jump can be formed cell-wise.
-    liquid_heatflux, vapor_heatflux = interface_heatflux(
-        temp, sdf, sat_temp, dx, dy, band_cells, wall_temp, eps
+    ``wall_temp`` and ``contact_angle`` (degrees) enter through the heater guard
+    cells; ``None`` gives a zero-gradient wall and a square contact angle. The
+    material numbers are relative to the liquid; ``n_extrap_iters`` and
+    ``prop_smear`` are Flash-X's ``mph_extpIt`` and ``mph_iPropSmear``."""
+    mass_flux, _ = _flashx_mass_transfer_pipeline(
+        temp, sdf, sat_temp, dx, dy, stefan, reynolds, prandtl, thermal_conductivity, rhogas,
+        wall_temp, contact_angle, n_extrap_iters, prop_smear, tol_normal, tol_temp,
     )
-    conducted = liquid_heatflux - thermal_conductivity * vapor_heatflux
-    return stefan / (reynolds * prandtl) * conducted
+    return mass_flux
 
 
 def continuity(
@@ -124,57 +142,23 @@ def continuity(
     sat_temp,
     dx: float,
     dy: float,
-    stefan: float,
-    reynolds: float,
-    prandtl: float,
-    thermal_conductivity: float,
-    rhogas: float,
-    band_cells: int = DEFAULT_BAND_CELLS,
-    taper_decay_cells: float = 2.0,
+    stefan,
+    reynolds,
+    prandtl,
+    thermal_conductivity,
+    rhogas,
     wall_temp=None,
-    eps: float = 1e-12,
+    contact_angle=None,
+    n_extrap_iters: int = DEFAULT_EXTRAP_ITERS,
+    prop_smear: float = DEFAULT_PROP_SMEAR,
+    tol_normal: float = 1e-13,
+    tol_temp: float = 1e-2,
 ) -> torch.Tensor:
-    """Velocity-divergence source from phase change: ``mdot * (n . grad(rho))``.
-
-    Args:
-        temp: cell-centered temperature, shape ``(..., H, W)``.
-        sdf: cell-centered signed distance, shape ``(..., H, W)``. ``sdf < 0`` is
-            liquid, ``sdf >= 0`` is vapor.
-        sat_temp: interface (saturation) temperature; scalar or broadcastable to
-            ``temp``.
-        dx: cell spacing in x.
-        dy: cell spacing in y.
-        stefan: Stefan number.
-        reynolds: Reynolds number.
-        prandtl: Prandtl number.
-        thermal_conductivity: vapor conductivity relative to the liquid.
-        rhogas: vapor-phase density.
-        band_cells: half-width, in cells, of the interface band (see
-            ``mass_transfer``).
-        wall_temp: heater temperature at the bottom wall, in the same units as
-            ``temp`` (see ``mass_transfer``). ``None`` keeps a zero-gradient wall.
-        eps: floor passed through to the interface normals and ghost fluid
-            gradients.
-
-    Returns:
-        Velocity-divergence source ``mdot * (n . grad(rho))``, shape ``(..., H, W)``,
-        nonzero on the cells where ``grad(rho)`` is (straddling the interface).
-    """
-    mdot = mass_transfer(
-        temp, sdf, sat_temp, dx, dy, stefan, reynolds, prandtl, thermal_conductivity,
-        band_cells=band_cells, taper_decay_cells=taper_decay_cells, wall_temp=wall_temp, eps=eps,
+    """``div(u)`` from phase change, ``-mdot * n . grad(1/rho)``, shape ``(..., H, W)``.
+    Same arguments as ``mass_transfer``. Negated relative to Flash-X's pressure RHS
+    so it matches the divergence of the face velocities."""
+    _, divergence = _flashx_mass_transfer_pipeline(
+        temp, sdf, sat_temp, dx, dy, stefan, reynolds, prandtl, thermal_conductivity, rhogas,
+        wall_temp, contact_angle, n_extrap_iters, prop_smear, tol_normal, tol_temp,
     )
-
-    normal_x, normal_y = interface_normals(sdf, dx, dy, eps)
-
-    # Smear the density step over ~3 cells with a smoothed Heaviside of the SDF, so
-    # grad(rho) spreads across a band instead of a single-cell spike. Liquid value
-    # 1.0, vapor value 1/rhogas (heaviside runs 0 -> 1 from liquid to vapor).
-    smear_cells = 5.0
-    half_width = 0.5 * smear_cells * max(dx, dy)   # transition spans smear_cells cells
-    phi = (sdf / half_width).clamp(-1.0, 1.0)
-    heaviside = 0.5 * (1.0 + phi + torch.sin(torch.pi * phi) / torch.pi)
-    rho = 1.0 + (1.0 / rhogas - 1.0) * heaviside
-    grad_rho_y, grad_rho_x = torch.gradient(rho, spacing=(dy, dx), dim=(-2, -1), edge_order=1)
-
-    return - mdot * (normal_x * grad_rho_x + normal_y * grad_rho_y)
+    return -divergence
