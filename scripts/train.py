@@ -11,19 +11,14 @@ import wandb
 from omegaconf import DictConfig, OmegaConf
 import torch
 from torch.profiler import profile, ProfilerActivity
-from torch.utils.data import DataLoader
 from lightning import seed_everything, Trainer
 from lightning.pytorch.loggers.wandb import WandbLogger
 from lightning.pytorch.callbacks import ModelSummary, Callback, ModelCheckpoint, RichProgressBar
 from lightning.pytorch.callbacks.progress.rich_progress import RichProgressBarTheme
 from lightning.pytorch.plugins.environments import SLURMEnvironment
 
-import braceexpand
 
-from nucleus.data.batching import collate
-from nucleus.data.normalize import get_normalizer
-from nucleus.data import get_pydataset, forecast_web_dataset
-from nucleus.models.modules import get_train_module
+from nucleus.training import build_dataloaders, build_train_module
 from nucleus.utils.set_fp32_precision import set_fp32_precision
 from nucleus.utils.parameter_count import count_model_parameters
 
@@ -159,95 +154,14 @@ def main(cfg: DictConfig) -> None:
         config=OmegaConf.to_container(cfg),
     )
 
-    train_module = get_train_module(cfg.model_cfg.train_module_name)(
-        checkpoint_path=cfg.checkpoint_path,
-        model_cfg=cfg.model_cfg,
-        data_cfg=cfg.data_cfg,
-        normalizer_cfg=cfg.normalizer_cfg,
-        optim_cfg=cfg.optim_cfg,
-        scheduler_cfg=cfg.scheduler_cfg,
-        log_wandb=False,
-    )
+    train_module = build_train_module(cfg)
 
     active_params = count_model_parameters(train_module.model, active=True)
     total_params = count_model_parameters(train_module.model, active=False)
     print(f"Active Model parameters: {active_params:,d}")
     print(f"Total Model parameters: {total_params:,d}")
-    
-    normalizer = get_normalizer(OmegaConf.to_container(cfg.normalizer_cfg, resolve=True))
 
-    shared_dataset_kwargs = dict(
-        history_time_window=cfg.history_time_window,
-        future_time_window=cfg.future_time_window,
-        fluid_params=train_module.model.expected_fluid_params,
-        heater_params=train_module.model.expected_heater_params,
-        global_params=train_module.model.expected_global_params,
-        layout=train_module.model.layout,
-        normalizer=normalizer,
-    )
-
-    pydataset = cfg.pydataset
-    dataset_cls, collate_fn = get_pydataset(pydataset)
-    
-    use_webdataset = pydataset == "forecast_web"
-    if use_webdataset:
-        train_shard_urls = list(braceexpand.braceexpand(list(cfg.data_cfg.train_paths)[0]))
-        train_dataset = forecast_web_dataset(
-            shard_urls=train_shard_urls,
-            cache_dir=None,
-            cache_size=0,
-            augment=True,
-            **shared_dataset_kwargs,
-        )
-        val_dataset = forecast_web_dataset(
-            shard_urls=list(cfg.data_cfg.val_paths)[0],
-            cache_dir=None,
-            cache_size=0,
-            augment=False,
-            **shared_dataset_kwargs,
-        )
-    else:
-        hdf5_kwargs = dict(
-            time_step=cfg.time_step,
-            start_time=cfg.start_time,
-            input_fields=cfg.data_cfg.input_fields,
-            output_fields=cfg.data_cfg.output_fields,
-        )
-        train_dataset = dataset_cls(
-            filenames=cfg.data_cfg.train_paths,
-            augment=True,
-            **shared_dataset_kwargs,
-            **hdf5_kwargs,
-        )
-        val_dataset = dataset_cls(
-            filenames=cfg.data_cfg.val_paths,
-            augment=False,
-            **shared_dataset_kwargs,
-            **hdf5_kwargs,
-        )
-
-    train_dataloader = DataLoader(
-        train_dataset,
-        batch_size=cfg.batch_size,
-        shuffle=not use_webdataset,
-        num_workers=8,
-        pin_memory=True,
-        prefetch_factor=2,
-        persistent_workers=not use_webdataset,
-        multiprocessing_context='fork',
-        collate_fn=collate_fn,
-    )
-    val_dataloader = DataLoader(
-        val_dataset,
-        batch_size=cfg.batch_size,
-        shuffle=False,
-        num_workers=2,
-        pin_memory=True,
-        prefetch_factor=3,
-        persistent_workers=not use_webdataset,
-        multiprocessing_context='fork',
-        collate_fn=collate_fn,
-    )
+    train_dataloader, val_dataloader = build_dataloaders(cfg, train_module)
 
     progress_bar = RichProgressBar(
         theme=RichProgressBarTheme(
