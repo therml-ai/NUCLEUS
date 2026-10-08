@@ -104,10 +104,10 @@ class InMemForecastDataset(Dataset):
         out_data = []
 
         for field in self.input_fields:
-            data_item = torch.tensor(self.data[file_idx][field][inp_slice])                
+            data_item = self.data[file_idx][field][inp_slice].detach().clone()
             inp_data.append(data_item)
         for field in self.output_fields:
-            data_item = torch.tensor(self.data[file_idx][field][out_slice])
+            data_item = self.data[file_idx][field][out_slice].detach().clone()
             out_data.append(data_item)
 
         inp_data = torch.stack(inp_data, dim=-1) # (T, H, W, C)

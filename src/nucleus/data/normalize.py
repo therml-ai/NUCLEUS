@@ -263,7 +263,9 @@ class DivFreeNormalizer(StandardNormalizer):
 
     def normalize(self, data: torch.Tensor, bulk_temp: torch.Tensor, layout: str = "t h w c") -> torch.Tensor:
         assert data.dim() >= 4, "Data must be at least 4D (..., T, H, W, C)"
-        assert data.shape[-1] == 6, "Data must have six channels (sdf, temp, velx, vely, psi, phi)"
+        if layout != "t h w c":
+            data = convert_layout(data, target_layout="t h w c", source_layout=layout)
+        assert data.shape[-1] in (4, 6), "Data must have four physical channels or six channels including psi and phi"
         assert isinstance(bulk_temp, (int, float)) or data.shape[:-4] == bulk_temp.shape, "Bulk temperature must match the batch dimensions of the data"
         # Clone once to avoid modifying the input, then normalize each channel
         # in-place to avoid the 4 intermediate tensors that torch.stack creates.
@@ -272,24 +274,31 @@ class DivFreeNormalizer(StandardNormalizer):
         result[..., 1] = self.normalize_temp(result[..., 1], bulk_temp)
         result[..., 2] = self.normalize_velx(result[..., 2])
         result[..., 3] = self.normalize_vely(result[..., 3])
-        result[..., 4] = self.normalize_psi(result[..., 4])
-        result[..., 5] = self.normalize_phi(result[..., 5])
+        if data.shape[-1] == 6:
+            result[..., 4] = self.normalize_psi(result[..., 4])
+            result[..., 5] = self.normalize_phi(result[..., 5])
+        if layout != "t h w c":
+            result = convert_layout(result, target_layout=layout, source_layout="t h w c")
         return result
 
     def unnormalize(self, data: torch.Tensor, bulk_temp: torch.Tensor, layout: str = "t h w c") -> torch.Tensor:
         assert data.dim() >= 4, "Data must be at least 4D (..., T, H, W, C)"
         if layout != "t h w c":
             data = convert_layout(data, target_layout="t h w c", source_layout=layout)
-        assert data.shape[-1] == 6, "Data must have 6 channels (sdf, temp, velx, vely, psi, phi)"
+        assert data.shape[-1] in (4, 6), "Data must have four physical channels or six channels including psi and phi"
         assert isinstance(bulk_temp, (int, float)) or data.shape[:-4] == bulk_temp.shape, "Bulk temperature must match the batch dimensions of the data"
-        result = torch.stack([
+        fields = [
             self.unnormalize_sdf(data[..., 0]),
             self.unnormalize_temp(data[..., 1], bulk_temp),
             self.unnormalize_velx(data[..., 2]),
             self.unnormalize_vely(data[..., 3]),
-            self.unnormalize_psi(data[..., 4]),
-            self.unnormalize_phi(data[..., 5]),
-        ], dim=-1)
+        ]
+        if data.shape[-1] == 6:
+            fields.extend([
+                self.unnormalize_psi(data[..., 4]),
+                self.unnormalize_phi(data[..., 5]),
+            ])
+        result = torch.stack(fields, dim=-1)
         if layout != "t h w c":
             result = convert_layout(result, target_layout=layout, source_layout="t h w c")
         return result
@@ -316,10 +325,14 @@ class NoNormalizer(Normalizer):
     def __init__(self):
         super().__init__(None)
 
-    def normalize(self, data: torch.Tensor, bulk_temp: torch.Tensor) -> torch.Tensor:
+    def normalize(
+        self, data: torch.Tensor, bulk_temp: torch.Tensor, layout: str = "t h w c"
+    ) -> torch.Tensor:
         return data
 
-    def unnormalize(self, data: torch.Tensor, bulk_temp: torch.Tensor) -> torch.Tensor:
+    def unnormalize(
+        self, data: torch.Tensor, bulk_temp: torch.Tensor, layout: str = "t h w c"
+    ) -> torch.Tensor:
         return data
 
     def normalize_params(self, sim_params_dicts: List[dict]) -> List[dict]:
@@ -329,6 +342,9 @@ class NoNormalizer(Normalizer):
         return sim_params_dicts
 
 def get_normalizer(normalizer_cfg: dict) -> Normalizer:
+    if normalizer_cfg["name"] == "no":
+        return NoNormalizer()
+
     constants = NormalizerConstants(
         max_domain_size=normalizer_cfg["max_domain_size"],
         sdf_mean=normalizer_cfg["sdf_mean"],
@@ -354,10 +370,7 @@ def get_normalizer(normalizer_cfg: dict) -> Normalizer:
         return PhaseNormalizer(constants)
     if normalizer_cfg["name"] == "divfree":
         return DivFreeNormalizer(constants)
-    if normalizer_cfg["name"] == "no":
-        return NoNormalizer()
-    else:
-        raise ValueError(f"Unknown normalizer: {normalizer_cfg['name']}")
+    raise ValueError(f"Unknown normalizer: {normalizer_cfg['name']}")
 
 class RunningVariance:
     def __init__(self):
