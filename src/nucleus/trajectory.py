@@ -28,12 +28,18 @@ class Trajectory:
     def num_steps(self) -> int:
         return self.sdf.shape[1]
 
+    def first(self, num_steps: int) -> "Trajectory":
+        return self._select_steps(slice(None, num_steps))
+
     def last(self, num_steps: int) -> "Trajectory":
+        return self._select_steps(slice(-num_steps, None))
+
+    def _select_steps(self, steps: slice) -> "Trajectory":
         return Trajectory(
-            sdf=self.sdf[:, -num_steps:],
-            temp=self.temp[:, -num_steps:],
-            velx=self.velx[:, -num_steps:],
-            vely=self.vely[:, -num_steps:],
+            sdf=self.sdf[:, steps],
+            temp=self.temp[:, steps],
+            velx=self.velx[:, steps],
+            vely=self.vely[:, steps],
             sim_params=self.sim_params,
         )
 
@@ -51,3 +57,23 @@ class Trajectory:
             vely=torch.cat((self.vely, vely), dim=1),
             sim_params=self.sim_params,
         )
+
+
+@dataclass(frozen=True)
+class RolloutWindow:
+    """The frames of a case that seed a rollout, and the frames it is compared to."""
+    start_time: int
+    history_steps: int
+    trajectory_steps: int
+    # the window sizes and grid spacing rollouts were always run with
+    input_window_size: int = 8
+    output_window_size: int = 8
+    dx: float = 1 / 32
+
+    @property
+    def history(self) -> slice:
+        return slice(self.start_time, self.start_time + self.history_steps)
+
+    @property
+    def targets(self) -> slice:
+        return slice(self.start_time, self.start_time + self.trajectory_steps)

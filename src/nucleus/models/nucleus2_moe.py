@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch.profiler import record_function
 from rotary_embedding_torch import RotaryEmbedding
-from typing import Literal, Optional
+from typing import Dict, Literal, Optional, Tuple
 
 from nucleus.layers.adaptive_layernorm import AdaptiveLayerNorm
 from nucleus.layers.attention import NeighborhoodAttention
@@ -17,6 +17,8 @@ from nucleus.layers import (
     LinearDebed
 )
 from nucleus.data.batching import CollatedBatch
+from nucleus.data.layout import convert_layout
+from nucleus.trajectory import RolloutWindow
 from nucleus.utils.sdf_reinit import sdf_reinit_sussman
 from nucleus.utils.inf_stabilizer import clip_temp_by_phase
 
@@ -302,6 +304,34 @@ class MoEBase(nn.Module):
         if return_moe_outputs:
             return trajectory, trajectory_moe_outputs
         return trajectory
+
+    rollout_fields = ("dfun", "temperature", "velx", "vely")
+
+    def rollout(
+        self,
+        fields: Dict[str, torch.Tensor],
+        sim_params_dict: dict,
+        normalizer,
+        window: RolloutWindow,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        device = next(self.parameters()).device
+        case = torch.stack([fields[name] for name in self.rollout_fields], dim=-1)
+        initial_state = convert_layout(
+            case[window.history][None].to(device), target_layout=self.layout, source_layout="t h w c"
+        )
+        preds = self.forward_trajectory(
+            initial_state,
+            sim_params_dict,
+            normalizer,
+            dx=window.dx,
+            input_time_window_size=window.input_window_size,
+            output_time_window_size=window.output_window_size,
+            trajectory_steps=window.trajectory_steps,
+            use_sdf_reinit=False,
+            clip_temp=False,
+        )
+        preds = convert_layout(preds, target_layout="t h w c", source_layout=self.layout).squeeze(0)
+        return preds, case[window.targets]
 
 
 @register_model("nucleus2_moe")

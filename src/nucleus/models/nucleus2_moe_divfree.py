@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch.profiler import record_function
 from rotary_embedding_torch import RotaryEmbedding
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional, Tuple
 import wandb
 from lightning.pytorch.loggers.wandb import WandbLogger
 
@@ -19,8 +19,8 @@ from nucleus.layers import (
     LinearDebed,
 )
 from nucleus.data.in_mem_divfree_forecast_dataset import DivFreeBatch, DivFreeData
-from nucleus.physics.leray import leray_projection
-from nucleus.trajectory import Trajectory
+from nucleus.physics.div_projection import div_projection
+from nucleus.trajectory import RolloutWindow, Trajectory
 from nucleus.models.modules import MoEConditionedForecastModule
 from nucleus.noise import LogUniformNoise
 from nucleus.utils.sdf_reinit import sdf_reinit_sussman
@@ -469,7 +469,7 @@ class Nucleus2MoEDivFree(nn.Module):
         normalizer=None,
         x_coords: torch.Tensor = None,
         use_sdf_reinit: bool = False,
-        use_leray: bool = False,
+        use_div_projection: bool = False,
         use_div_gate: bool = False,
         use_mass_transfer: bool = False,
         sim_params_dict: Optional[List[dict]] = None,
@@ -489,7 +489,7 @@ class Nucleus2MoEDivFree(nn.Module):
 
         x, moe_outputs = self.model_step(input, sim_params)
         nn_sdf, nn_temp, nn_velx_df, nn_vely_df, nn_div_source = x.unbind(-1)
-        # The debed predicts velocity cell-centered (H, W); the reconstruction (leray,
+        # The debed predicts velocity cell-centered (H, W); the reconstruction (div projection,
         # grad(phi), output) lives on the MAC faces, so interpolate to faces here.
         # NOTE: placeholder bridge -- revisit whether velocity should be predicted on
         # faces directly or the whole pipeline moved to cell centers.
@@ -530,10 +530,10 @@ class Nucleus2MoEDivFree(nn.Module):
         )
 
         # Construct the divergence-free component of the velocity.
-        if use_leray:
+        if use_div_projection:
             nn_velface_x_physical = normalizer.unnormalize_velx(nn_velx_df)
             nn_velface_y_physical = normalizer.unnormalize_vely(nn_vely_df)
-            velfacex_sol_physical, velfacey_sol_physical = leray_projection(
+            velfacex_sol_physical, velfacey_sol_physical = div_projection(
                 nn_velface_x_physical, nn_velface_y_physical, GRID_SPACING, GRID_SPACING)
             velfacex_sol = normalizer.normalize_velx(velfacex_sol_physical)
             velfacey_sol = normalizer.normalize_vely(velfacey_sol_physical)
@@ -613,6 +613,7 @@ class Nucleus2MoEDivFree(nn.Module):
             thermal_conductivity=bcast(batched("thcogas")),
             rhogas=bcast(batched("rhogas")),
             wall_temp=1.0,  # heater temperature on the non-dimensional scale
+            contact_angle=bcast(batched("heater", "advAngle")),
         )
 
     def _normalized_sim_params(self, sim_params_dict: dict, normalizer, device, batch_size: int) -> torch.Tensor:
@@ -658,10 +659,10 @@ class Nucleus2MoEDivFree(nn.Module):
         use_sdf_reinit: bool = False,
         # forward_trajectory is the inference/rollout entry point (never used for the
         # training loss, which calls step() directly), so it's the right place to
-        # enforce Leray projection for a divergence-free rollout even though training
+        # enforce the div projection for a divergence-free rollout even though training
         # only encourages it approximately via the loss (see _auxiliary_targets).
-        # Left off by default for now while debugging -- pass use_leray=True to enable.
-        use_leray: bool = False,
+        # Left off by default for now while debugging -- pass use_div_projection=True to enable.
+        use_div_projection: bool = False,
         use_div_gate: bool = False,
         use_mass_transfer: bool = False,
         return_moe_outputs: bool = False,
@@ -689,7 +690,7 @@ class Nucleus2MoEDivFree(nn.Module):
             )
             output = self.step(
                 model_input, sim_params, normalizer, x_coords=x_coords,
-                use_sdf_reinit=use_sdf_reinit, use_leray=use_leray, use_div_gate=use_div_gate,
+                use_sdf_reinit=use_sdf_reinit, use_div_projection=use_div_projection, use_div_gate=use_div_gate,
                 use_mass_transfer=use_mass_transfer, sim_params_dict=trajectory.sim_params,
             )
             sdf, temp, velx, vely = self._predicted_fields(
@@ -710,6 +711,49 @@ class Nucleus2MoEDivFree(nn.Module):
         if return_moe_outputs:
             return trajectory, trajectory_moe_outputs
         return trajectory
+
+    # the true staggered face velocities, the grid this model predicts on
+    rollout_fields = ("dfun", "temperature", "velfacex", "velfacey")
+
+    def rollout(
+        self,
+        fields: Dict[str, torch.Tensor],
+        sim_params_dict: dict,
+        normalizer,
+        window: RolloutWindow,
+    ) -> Tuple[Trajectory, Trajectory]:
+        device = next(self.parameters()).device
+        initial_trajectory = _case_trajectory(fields, sim_params_dict, window.history, device)
+        pred_trajectory = self.forward_trajectory(
+            initial_trajectory,
+            normalizer,
+            dx=window.dx,
+            input_time_window_size=window.input_window_size,
+            output_time_window_size=window.output_window_size,
+            trajectory_steps=window.trajectory_steps,
+            use_sdf_reinit=False,
+            clip_temp=False,
+            use_div_projection=True,
+            use_div_gate=True,
+        )
+        # forward_trajectory rolls whole output windows, so it can overshoot
+        # trajectory_steps; predictions and targets are compared on the natural grids,
+        # without averaging the face velocities back to cell centers
+        targets = _case_trajectory(fields, sim_params_dict, window.targets, torch.device("cpu"))
+        return pred_trajectory.first(window.trajectory_steps), targets
+
+
+
+def _case_trajectory(
+    fields: Dict[str, torch.Tensor], sim_params_dict: dict, steps: slice, device: torch.device
+) -> Trajectory:
+    return Trajectory(
+        sdf=fields["dfun"][steps][None].to(device),
+        temp=fields["temperature"][steps][None].to(device),
+        velx=fields["velfacex"][steps][None].to(device),
+        vely=fields["velfacey"][steps][None].to(device),
+        sim_params=[sim_params_dict],
+    )
 
 
 @dataclass
@@ -835,7 +879,7 @@ class DivFreeForecastModule(MoEConditionedForecastModule):
     def _auxiliary_targets(self, target: DivFreeData) -> AuxiliaryTargets:
         velx_physical = self.normalizer.unnormalize_velx(target.velx)
         vely_physical = self.normalizer.unnormalize_vely(target.vely)
-        velx_sol_physical, vely_sol_physical = leray_projection(
+        velx_sol_physical, vely_sol_physical = div_projection(
             velx_physical, vely_physical, GRADIENT_SPACING, GRADIENT_SPACING
         )
         velx_dil_physical = velx_physical - velx_sol_physical

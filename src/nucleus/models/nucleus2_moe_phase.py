@@ -114,6 +114,12 @@ class Nucleus2MoEPhase(Nucleus2MoE):
 
         return fields, phase_logits, moe_outputs
 
+    def rollout(self, fields, sim_params_dict, normalizer, window):
+        # the Nucleus2MoE rollout this would inherit calls forward_trajectory with a
+        # sim-params dict and a normalizer, which this model's forward_trajectory does
+        # not take
+        raise NotImplementedError("Nucleus2MoEPhase does not support rollout yet")
+
     def forward_trajectory(
         self,
         initial_state: torch.Tensor,

@@ -7,21 +7,9 @@ from torch.utils.data import DataLoader, Dataset
 
 from nucleus.data import get_pydataset, forecast_web_dataset
 from nucleus.data.normalize import get_normalizer
-from nucleus.flashx.divfree import FlashXDivFreeDataset, flashx_divfree_collate
 from nucleus.models.modules import get_train_module
 
 WEB_PYDATASET = "forecast_web"
-# datasets reading BubbleML files written by boiling-data, kept apart from the
-# nucleus.data registry so they share no code with the older datasets
-FLASHX_PYDATASETS = {
-    "flashx_divfree": (FlashXDivFreeDataset, flashx_divfree_collate),
-}
-
-
-def dataset_and_collate(pydataset: str):
-    if pydataset in FLASHX_PYDATASETS:
-        return FLASHX_PYDATASETS[pydataset]
-    return get_pydataset(pydataset)
 
 
 def build_train_module(cfg: DictConfig) -> L.LightningModule:
@@ -49,7 +37,7 @@ def build_datasets(cfg: DictConfig, train_module: L.LightningModule) -> Tuple[Da
     )
     if cfg.pydataset == WEB_PYDATASET:
         return _build_web_datasets(cfg, shared_kwargs)
-    dataset_cls, _ = dataset_and_collate(cfg.pydataset)
+    dataset_cls, _ = get_pydataset(cfg.pydataset)
     hdf5_kwargs = dict(
         time_step=cfg.time_step,
         start_time=cfg.start_time,
@@ -76,7 +64,7 @@ def build_dataloaders(
     val_workers: int = 2,
 ) -> Tuple[DataLoader, DataLoader]:
     train_dataset, val_dataset = build_datasets(cfg, train_module)
-    _, collate_fn = dataset_and_collate(cfg.pydataset)
+    _, collate_fn = get_pydataset(cfg.pydataset)
     is_web = cfg.pydataset == WEB_PYDATASET
     train_dataloader = DataLoader(
         train_dataset,

@@ -97,7 +97,7 @@ def make_batch(data: DivFreeData, sim_params_tensor: torch.Tensor) -> DivFreeBat
     )
 
 
-def run_step(model, data, sim_params, normalizer, input_type, use_div_gate=False, use_leray=False):
+def run_step(model, data, sim_params, normalizer, input_type, use_div_gate=False, use_div_projection=False):
     """Feed the model input as either a bare ``Nucleus2MoEDivFreeInput`` (with the
     sim-param tensor and dict passed separately) or a ``DivFreeBatch`` (which carries
     them). Both paths supply the x-coordinates the temperature ansatz needs."""
@@ -106,11 +106,11 @@ def run_step(model, data, sim_params, normalizer, input_type, use_div_gate=False
         return model.step(
             as_input(data), sim_params, normalizer, x_coords=x_coords,
             sim_params_dict=[temp_sim_params_dict() for _ in range(data.sdf.shape[0])],
-            use_div_gate=use_div_gate, use_leray=use_leray,
+            use_div_gate=use_div_gate, use_div_projection=use_div_projection,
         )
     return model.step(
         make_batch(data, sim_params), normalizer=normalizer, x_coords=x_coords,
-        use_div_gate=use_div_gate, use_leray=use_leray,
+        use_div_gate=use_div_gate, use_div_projection=use_div_projection,
     )
 
 
@@ -257,8 +257,8 @@ def test_step_uses_per_sample_sim_params_dict(model):
 
 
 @pytest.mark.parametrize("input_type", ["input", "batch"])
-def test_leray_solenoidal_part_is_divergence_free(model, input_type):
-    # With use_leray, the solenoidal velocity (velx_sol/vely_sol) is the Leray projection
+def test_div_projection_solenoidal_part_is_divergence_free(model, input_type):
+    # With use_div_projection, the solenoidal velocity (velx_sol/vely_sol) is the Leray projection
     # of the raw predicted velocity, so it is divergence free everywhere regardless of the
     # sdf or the divergence source (which only enters velx_dil).
     torch.manual_seed(0)
@@ -269,7 +269,7 @@ def test_leray_solenoidal_part_is_divergence_free(model, input_type):
     sim_params = torch.randn(batch_size, model.num_sim_params)
 
     with torch.no_grad():
-        output = run_step(model, data, sim_params, make_normalizer(), input_type, use_leray=True)
+        output = run_step(model, data, sim_params, make_normalizer(), input_type, use_div_projection=True)
 
     # The unit normalizer keeps velx_sol/vely_sol physical, so their MAC divergence is the
     # Leray residual.
@@ -557,10 +557,10 @@ def test_div_gate_confines_divergence_to_band(model):
     sim_params = torch.randn(1, model.num_sim_params)
     normalizer = make_normalizer()
 
-    # use_leray makes the solenoidal part divergence-free, so the total velocity's
+    # use_div_projection makes the solenoidal part divergence-free, so the total velocity's
     # divergence equals the (gated) source -- otherwise the raw predicted velocity leaks
     # its own divergence everywhere and the confinement can't be measured.
-    kwargs = dict(x_coords=x_coords_for(64), sim_params_dict=[temp_sim_params_dict()], use_leray=True)
+    kwargs = dict(x_coords=x_coords_for(64), sim_params_dict=[temp_sim_params_dict()], use_div_projection=True)
     with torch.no_grad():
         gated = model.step(as_input(data), sim_params, normalizer, use_div_gate=True, **kwargs)
         ungated = model.step(as_input(data), sim_params, normalizer, use_div_gate=False, **kwargs)
@@ -646,8 +646,9 @@ def test_step_use_mass_transfer_replaces_learned_source(model):
     sim_params_dict.update(
         {"stefan": 0.1, "inv_reynolds": 0.01, "prandtl": 1.0, "thcogas": 0.1, "rhogas": 0.01}
     )
-    # above bulk_temp so temp non-dim is sane; xMin/xMax feed the temperature ansatz.
-    sim_params_dict["heater"].update({"wallTemp": 80.0, "xMin": 0.4, "xMax": 1.6})
+    # above bulk_temp so temp non-dim is sane; xMin/xMax feed the temperature ansatz;
+    # advAngle sets the level-set slope at the heater for the continuity source.
+    sim_params_dict["heater"].update({"wallTemp": 80.0, "xMin": 0.4, "xMax": 1.6, "advAngle": 45.0})
     x_coords = x_coords_for(64)
 
     with torch.no_grad():
