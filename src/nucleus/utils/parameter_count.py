@@ -1,9 +1,8 @@
 import torch
 import torch.nn as nn
 from nucleus.layers.moe.topk_moe import TopkMoE
-from nucleus.layers.moe.nucleus1_topk_moe import TopkMoE as Nucleus1TopkMoE
 
-_MOE_CLASSES = (TopkMoE, Nucleus1TopkMoE)
+_MOE_CLASSES = (TopkMoE,)
 
 def count_model_parameters(module: nn.Module, active: bool = False) -> int:
     r"""
