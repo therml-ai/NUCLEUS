@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch.profiler import record_function
 from rotary_embedding_torch import RotaryEmbedding
-from typing import Dict, Literal, Optional, Tuple
+from typing import List, Literal
 
 from nucleus.layers.adaptive_layernorm import AdaptiveLayerNorm
 from nucleus.layers.attention import NeighborhoodAttention
@@ -16,15 +16,18 @@ from nucleus.layers import (
     LinearEmbed,
     LinearDebed
 )
-from nucleus.data.batching import CollatedBatch
-from nucleus.data.layout import convert_layout
-from nucleus.trajectory import RolloutWindow
-from nucleus.utils.sdf_reinit import sdf_reinit_sussman
-from nucleus.utils.inf_stabilizer import clip_temp_by_phase
+from boiling_data.flashx.batch import FlashXBatch
+from boiling_data.flashx.normalizer import NormalizerWrapper
+from nucleus.models.flashx_io import (
+    NUCLEUS2_CONFIG_KEYS,
+    num_config_columns,
+    require_normalized,
+    unnormalized_prediction,
+)
 
 from ._api import register_model
 
-__all__ = ["Nucleus2MoE", "Nucleus2MoEConfig"]
+__all__ = ["Nucleus2MoE", "Nucleus2MoEConfig", "Nucleus2MoEOutput"]
 
 
 _DTYPE_TO_STR: dict[torch.dtype, str] = {
@@ -133,23 +136,27 @@ class TransformerMoEBlock(nn.Module):
         return x, moe_output
 
 
-class MoEBase(nn.Module):
+@dataclass
+class Nucleus2MoEOutput:
+    prediction: FlashXBatch  # normalized; every frame of the output window
+    moe_outputs: List[TopkMoEOutput]
+
+
+@register_model("nucleus2_moe")
+class Nucleus2MoE(nn.Module):
     config_class = Nucleus2MoEConfig
     config_from_dict = staticmethod(_config_from_dict)
-    expected_fluid_params = [
-        "inv_reynolds", "cpgas", "mugas", "rhogas", "thcogas",
-        "stefan", "prandtl", "bulk_temp", "sat_temp"
-    ]
-    expected_heater_params = ["wallTemp", "xMin", "xMax"]
-    expected_global_params = ["gravy"]
-    expected_fields = ["dfun", "temperature", "velx", "vely"]
-    num_sim_params = len(expected_fluid_params) + len(expected_heater_params) + len(expected_global_params)
-    layout = "t h w c"
+    config_keys = NUCLEUS2_CONFIG_KEYS
+    field_names = ("dfun", "temperature", "velx", "vely")
+    # normalized with one shared scale and no offset, so a flip's sign change holds
+    vector_fields = (("velx", "vely"),)
+    num_sim_params = num_config_columns(NUCLEUS2_CONFIG_KEYS)
 
-    def __init__(self, config: Nucleus2MoEConfig):
+    def __init__(self, config: Nucleus2MoEConfig, normalizer: NormalizerWrapper):
         super().__init__()
         self.config = config
-        n_fields = len(self.expected_fields)
+        self.normalizer = normalizer
+        n_fields = len(self.field_names)
 
         self.embed_dtype = get_dtype(config.embed_dtype)
         self.debed_dtype = get_dtype(config.debed_dtype)
@@ -208,8 +215,18 @@ class MoEBase(nn.Module):
         self._model_name = state.get("model_name")
         self.config = _config_from_dict(state["config"])
 
-    def forward(self, batch: CollatedBatch) -> torch.Tensor:
-        return self.step(batch.input, batch.sim_params_tensor)
+    def forward(self, batch: FlashXBatch) -> Nucleus2MoEOutput:
+        """batch: normalized, holding field_names and a config tensor of config_keys."""
+        require_normalized(batch)
+        output, moe_outputs = self.step(batch.stacked_fields(self.field_names), batch.config_tensor())
+        prediction = batch.with_fields(dict(zip(self.field_names, output.unbind(-1))))
+        return Nucleus2MoEOutput(prediction, moe_outputs)
+
+    @torch.no_grad()
+    def predict_next(self, window: FlashXBatch, num_timesteps: int) -> FlashXBatch:
+        """The num_timesteps frames that follow a raw (unnormalized) window, raw."""
+        prediction = self(self.normalizer.normalize(window)).prediction
+        return unnormalized_prediction(self.normalizer, window, prediction.tail_time_window(num_timesteps))
 
     def step(self, input: torch.Tensor, sim_params: torch.Tensor):
         """
@@ -242,99 +259,3 @@ class MoEBase(nn.Module):
             x = self.debed(x, target_shape=(h, w))
 
         return x.to(torch.float32), moe_outputs
-
-    def _normalized_sim_params(self, sim_params_dict: dict, normalizer, device, batch_size: int) -> torch.Tensor:
-        # Assemble the normalized conditioning tensor the network expects from the
-        # physical sim-parameter dict, ordered to match the expected_* fields and
-        # broadcast to the rollout batch size.
-        normalized = normalizer.normalize_params([sim_params_dict])[0]
-        values = (
-            [normalized[param] for param in self.expected_fluid_params]
-            + [normalized["heater"][param] for param in self.expected_heater_params]
-            + [normalized[param] for param in self.expected_global_params]
-        )
-        sim_params = torch.tensor(values, device=device, dtype=torch.float32)
-        return sim_params[None, :].expand(batch_size, -1).contiguous()
-
-    def forward_trajectory(
-        self,
-        initial_state: torch.Tensor,
-        sim_params_dict: dict,
-        normalizer,
-        dx: float,
-        input_time_window_size: int,
-        output_time_window_size: int,
-        trajectory_steps: int,
-        use_sdf_reinit: bool = False,
-        return_moe_outputs: bool = False,
-        clip_temp: bool = False,
-    ):
-        assert initial_state.dim() == 5, "initial state must be [B, T, H, W, C]"
-        assert input_time_window_size <= initial_state.shape[1]
-
-        bulk_temp = sim_params_dict["bulk_temp"]
-        sim_params = self._normalized_sim_params(
-            sim_params_dict, normalizer, initial_state.device, initial_state.shape[0]
-        )
-
-        trajectory = initial_state.clone()
-        trajectory_moe_outputs = [] if return_moe_outputs else None
-
-        for _ in range(input_time_window_size, trajectory_steps, output_time_window_size):
-            normalized_window = normalizer.normalize(trajectory[:, -input_time_window_size:], bulk_temp)
-            pred, moe_outputs = self.step(normalized_window, sim_params)
-            pred = normalizer.unnormalize(pred, bulk_temp)
-            output_time_window = pred[:, -output_time_window_size:]
-
-            if use_sdf_reinit:
-                output_time_window[..., 0] = sdf_reinit_sussman(output_time_window[..., 0], dx=dx, n_iter=5)
-
-            if clip_temp:
-                output_time_window[..., 1] = clip_temp_by_phase(
-                    output_time_window[..., 1],
-                    output_time_window[..., 0],
-                    sim_params_dict["sat_temp"],
-                    sim_params_dict["heater"]["wallTemp"],
-                )
-
-            trajectory = torch.cat((trajectory, output_time_window), dim=1)
-            if return_moe_outputs:
-                trajectory_moe_outputs.append(moe_outputs)
-
-        if return_moe_outputs:
-            return trajectory, trajectory_moe_outputs
-        return trajectory
-
-    rollout_fields = ("dfun", "temperature", "velx", "vely")
-
-    def rollout(
-        self,
-        fields: Dict[str, torch.Tensor],
-        sim_params_dict: dict,
-        normalizer,
-        window: RolloutWindow,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        device = next(self.parameters()).device
-        case = torch.stack([fields[name] for name in self.rollout_fields], dim=-1)
-        initial_state = convert_layout(
-            case[window.history][None].to(device), target_layout=self.layout, source_layout="t h w c"
-        )
-        preds = self.forward_trajectory(
-            initial_state,
-            sim_params_dict,
-            normalizer,
-            dx=window.dx,
-            input_time_window_size=window.input_window_size,
-            output_time_window_size=window.output_window_size,
-            trajectory_steps=window.trajectory_steps,
-            use_sdf_reinit=False,
-            clip_temp=False,
-        )
-        preds = convert_layout(preds, target_layout="t h w c", source_layout=self.layout).squeeze(0)
-        return preds, case[window.targets]
-
-
-@register_model("nucleus2_moe")
-@torch.compile(fullgraph=True)#, mode="reduce-overhead")
-class Nucleus2MoE(MoEBase):
-    pass

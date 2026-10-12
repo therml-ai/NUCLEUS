@@ -1,104 +1,70 @@
-import random
-import torch
 import pytest
+import torch
 
-from nucleus.models.nucleus2_moe import Nucleus2MoE, Nucleus2MoEConfig
-from nucleus.data.batching import CollatedBatch
-from nucleus.data.normalize import NoNormalizer
+from nucleus.models import get_model, load_model
+from nucleus.models.nucleus2_moe import Nucleus2MoE
+from nucleus.testing.flashx import flashx_normalizer, random_batch
+from nucleus.testing.reference_attention import reference_natten
+
+SMALL_MODEL = dict(
+    patch_size=4, embed_dim=64, num_heads=2, processor_blocks=2,
+    num_experts=4, topk=2, moe_intermediate_dim=64, patching="Linear",
+)
 
 
-# The divergence-free variant has its own dataclass-based I/O and is covered in
-# test_nucleus2_divfree.py; this file exercises the unconstrained model.
 @pytest.fixture
 def model():
-    return Nucleus2MoE(Nucleus2MoEConfig(
-        patch_size=4,
-        embed_dim=64,
-        num_heads=2,
-        processor_blocks=2,
-        num_experts=4,
-        topk=2,
-        moe_intermediate_dim=64,
-        patching="Linear",
-    ))
+    torch.manual_seed(0)
+    normalizer = flashx_normalizer(Nucleus2MoE.field_names, vector_fields=[("velx", "vely")])
+    return get_model("nucleus2_moe", normalizer, **SMALL_MODEL)
 
 
-def make_batch(batch_size, num_sim_params, device):
-    return CollatedBatch(
-        input=torch.randn(batch_size, 8, 64, 64, 4, device=device),
-        target=None,
-        sim_params_dict={},
-        sim_params_tensor=torch.randn(batch_size, num_sim_params, device=device),
-        x_grid=torch.randn(64, device=device),
-        y_grid=torch.randn(64, device=device),
-        dx=torch.tensor(0.01, device=device),
-        dy=torch.tensor(0.01, device=device),
-    )
+def _batch(model, batch_size=2):
+    return random_batch(Nucleus2MoE.field_names, Nucleus2MoE.config_keys, batch_size=batch_size)
 
 
-def make_sim_params_dict(model):
-    # forward_trajectory assembles its conditioning tensor from a physical sim-param
-    # dict; the values are arbitrary for a finiteness/shape check.
-    params = {"bulk_temp": 50.0, "sat_temp": 58.0}
-    params.update({param: random.random() for param in model.expected_fluid_params})
-    params["heater"] = {param: random.random() for param in model.expected_heater_params}
-    params.update({param: random.random() for param in model.expected_global_params})
-    return params
+def test_forward_predicts_every_field_for_the_same_samples(model):
+    batch = model.normalizer.normalize(_batch(model))
+    with torch.no_grad():
+        output = model(batch)
+    assert set(output.prediction.fields) == set(Nucleus2MoE.field_names)
+    for name, tensor in output.prediction.fields.items():
+        assert tensor.shape == batch.fields[name].shape
+        assert torch.isfinite(tensor).all()
+    assert output.prediction.is_normalized
+    assert output.prediction.configs == batch.configs
+    assert len(output.moe_outputs) == SMALL_MODEL["processor_blocks"]
 
 
-@pytest.mark.parametrize("device", ["cpu"])
-def test_nucleus2(device, model):
-    if device == "cpu":
-        pytest.skip("flex attention not supported on CPU")
-
-    model = model.to(device)
-    batch = make_batch(2, model.num_sim_params, device)
-
-    output, moe_output = model(batch)
-    assert output.shape == (2, 8, 64, 64, 4)
-    assert torch.all(torch.isfinite(output))
-
-    loss = output.sum()
-    loss.backward()
-    for param in model.parameters():
-        if param.grad is not None:
-            assert torch.all(torch.isfinite(param.grad))
+def test_forward_needs_a_normalized_batch(model):
+    with pytest.raises(ValueError, match="normalized batches"):
+        model(_batch(model))
 
 
-@pytest.mark.parametrize("device", ["cpu"])
-@pytest.mark.parametrize("batch_size", [1, 4])
-@pytest.mark.parametrize("trajectory_steps", [8, 24])
-@pytest.mark.parametrize("use_sdf_reinit", [True, False])
-@pytest.mark.parametrize("return_moe_outputs", [True, False])
-def test_nucleus2_forward_trajectory(
-    device,
-    model,
-    batch_size,
-    trajectory_steps,
-    use_sdf_reinit,
-    return_moe_outputs
-):
-    model = model.to(device)
-    batch = make_batch(batch_size, model.num_sim_params, device)
+def test_gradients_are_finite(model):
+    batch = model.normalizer.normalize(_batch(model))
+    with reference_natten():
+        output = model(batch)
+    output.prediction.stacked_fields(Nucleus2MoE.field_names).sum().backward()
+    grads = [param.grad for param in model.parameters() if param.grad is not None]
+    assert grads and all(torch.isfinite(grad).all() for grad in grads)
 
-    with torch.inference_mode():
-        # forward_trajectory runs in physical space and normalizes internally; an
-        # identity normalizer keeps the random-input finiteness/shape checks valid.
-        trajectory = model.forward_trajectory(
-            batch.input,
-            make_sim_params_dict(model),
-            NoNormalizer(),
-            dx=1/4,
-            input_time_window_size=8,
-            output_time_window_size=8,
-            trajectory_steps=trajectory_steps,
-            use_sdf_reinit=use_sdf_reinit,
-            return_moe_outputs=return_moe_outputs
-        )
-    if return_moe_outputs:
-        trajectory, moe_outputs = trajectory
 
-    assert trajectory.isfinite().all()
-    assert trajectory.shape[0] == batch_size
-    assert trajectory.shape[1] == trajectory_steps
-    assert trajectory.shape[-1] == 4
+def test_predict_next_gives_raw_frames_that_extend_the_window(model):
+    window = _batch(model)
+    prediction = model.predict_next(window, num_timesteps=1)
+    assert not prediction.is_normalized
+    assert prediction.num_timesteps == 1
+    assert window.extend(prediction).num_timesteps == window.num_timesteps + 1
+
+
+def test_load_model_rebuilds_the_model_and_its_normalizer(model, tmp_path):
+    path = tmp_path / "checkpoint.pt"
+    torch.save({"model": model.state_dict()}, path)
+    loaded = load_model(path)
+    assert isinstance(loaded, Nucleus2MoE)
+    assert loaded.normalizer.statistics == model.normalizer.statistics
+    assert loaded.normalizer.vector_fields == [["velx", "vely"]]
+    for name, tensor in model.state_dict().items():
+        if isinstance(tensor, torch.Tensor):
+            torch.testing.assert_close(loaded.state_dict()[name], tensor)

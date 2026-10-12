@@ -1,6 +1,7 @@
 """Coordinate grids for the MAC layout: walls at the origin, cell centers at
 ``((i + 0.5) * dx, (j + 0.5) * dy)``, faces on the cell edges."""
 
+from dataclasses import dataclass
 from typing import Tuple
 
 import torch
@@ -44,3 +45,33 @@ def cell_center_coordinates(
     x_axis = (torch.arange(width, device=device, dtype=dtype) + 0.5) * dx
     y_axis = (torch.arange(height, device=device, dtype=dtype) + 0.5) * dy
     return _meshgrid(x_axis, y_axis)
+
+
+@dataclass(frozen=True)
+class CellGrid:
+    """The cell spacing a batch shares, and every sample's cell-center x
+    coordinates, ``(batch, 1, 1, width)`` to broadcast against
+    ``(batch, time, height, width)`` fields."""
+    dx: float
+    dy: float
+    x_centers: torch.Tensor
+
+
+def cell_grid(
+    x_min: torch.Tensor, x_max: torch.Tensor, y_min: torch.Tensor, y_max: torch.Tensor, height: int, width: int
+) -> CellGrid:
+    """The grid of ``height`` x ``width`` cells over each sample's domain; every
+    bound is ``(batch,)``. The cell counts come from the fields rather than the
+    simulation's block layout, which downsampled data no longer matches."""
+    dx_per_sample = (x_max - x_min) / width
+    dy_per_sample = (y_max - y_min) / height
+    dx, dy = float(dx_per_sample[0]), float(dy_per_sample[0])
+    # the Poisson solves and finite differences take one spacing per call
+    if not (torch.allclose(dx_per_sample, torch.full_like(dx_per_sample, dx))
+            and torch.allclose(dy_per_sample, torch.full_like(dy_per_sample, dy))):
+        raise ValueError(
+            f"every sample in a batch must share one grid spacing, not dx = {dx_per_sample.tolist()} "
+            f"and dy = {dy_per_sample.tolist()}"
+        )
+    offsets = (torch.arange(width, device=x_min.device, dtype=x_min.dtype) + 0.5) * dx
+    return CellGrid(dx, dy, (x_min[:, None] + offsets)[:, None, None, :])
