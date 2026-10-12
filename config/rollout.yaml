@@ -1,0 +1,17 @@
+# Rolls a trained model out from the history frames of every data_cfg.test_paths case
+# and writes each rollout as a BubbleML file named after the case.
+checkpoint_path: ???
+# Root path for dataset files, referenced as ${data_dir} in the data_cfg paths.
+data_dir: ???
+# defaults to a rollouts directory next to the checkpoint
+output_dir:
+
+start_frame: 200
+history_timesteps: 8
+# frames predicted per model call, at most history_timesteps
+frames_per_step: 8
+trajectory_steps: 300
+
+defaults:
+  - _self_
+  - data_cfg: flashx
