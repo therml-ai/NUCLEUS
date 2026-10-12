@@ -52,8 +52,12 @@ def run_training(cfg: DictConfig, build_training_module: Callable[[nn.Module, Di
         checkpoints = CheckpointManager(run_directory / "checkpoints", model, optimization, _container(cfg))
     # NATTEN cannot backpropagate on the CPU, so CPU runs use the reference attention
     attention = reference_natten() if device.type == "cpu" else contextlib.nullcontext()
-    with attention:
-        state = fit(module, train_batches, val_batches, optimization, loop_settings, logger, device, checkpoints, state)
+    try:
+        with attention:
+            state = fit(module, train_batches, val_batches, optimization, loop_settings, logger, device, checkpoints, state)
+    except BaseException:
+        logger.finish(failed=True)
+        raise
     logger.finish()
     return state
 

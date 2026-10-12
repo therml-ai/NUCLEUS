@@ -28,9 +28,10 @@ class MetricLogger:
         )
         print(f"step {step}: {headline}", flush=True)
 
-    def finish(self) -> None:
+    def finish(self, failed: bool = False) -> None:
         if self.run is not None:
-            self.run.finish()
+            # a nonzero exit code marks the wandb run as failed
+            self.run.finish(exit_code=1 if failed else 0)
 
 
 def _to_float(value: Metric) -> float:

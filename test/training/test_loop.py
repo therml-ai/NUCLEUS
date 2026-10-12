@@ -8,7 +8,7 @@ from nucleus.models.nucleus2_moe import Nucleus2MoE
 from nucleus.testing.flashx import random_forecast_batch
 from nucleus.training.checkpoint import BEST_CHECKPOINT, LAST_CHECKPOINT, CheckpointManager, restore_training
 from nucleus.training.logger import MetricLogger
-from nucleus.training.loop import LoopSettings, fit, validate
+from nucleus.training.loop import LoopSettings, NonFiniteValidationError, fit, validate
 from nucleus.training.optim import build_optimization
 
 OPTIM = {"name": "adamw", "params": {"lr": 1e-3, "weight_decay": 0.1}}
@@ -99,3 +99,23 @@ def test_every_logged_step_has_the_gradient_norm(moe_training):
     for metrics in logger.logged.values():
         assert math.isfinite(float(metrics["train/grad_norm"]))
         assert "train/loss" in metrics
+
+
+def test_a_non_finite_validation_loss_stops_training_without_checkpointing(moe_training, tmp_path):
+    validation_step = moe_training.validation_step
+
+    def diverged(batch):
+        return validation_step(batch) | {"val/loss": float("nan")}
+
+    moe_training.validation_step = diverged
+    logger = _RecordingLogger()
+    optimization = build_optimization(moe_training.model, OPTIM, SCHEDULER, max_steps=4)
+    checkpoints = CheckpointManager(tmp_path, moe_training.model, optimization, config={})
+    with pytest.raises(NonFiniteValidationError, match=r"step 2 gave val/loss = nan"):
+        fit(
+            moe_training, _batches(), _batches(1), optimization,
+            _settings(max_steps=4, log_every_n_steps=10), logger, torch.device("cpu"), checkpoints,
+        )
+    # the validation metrics are logged before training stops
+    assert math.isnan(logger.logged[2]["val/loss"])
+    assert not (tmp_path / LAST_CHECKPOINT).exists() and not (tmp_path / BEST_CHECKPOINT).exists()

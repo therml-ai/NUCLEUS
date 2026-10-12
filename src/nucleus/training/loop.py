@@ -1,3 +1,4 @@
+import math
 import signal
 import time
 from dataclasses import dataclass
@@ -46,6 +47,10 @@ class LoopSettings:
     val_every_n_steps: int = 1000
     log_every_n_steps: int = 50
     max_val_batches: Optional[int] = None
+
+
+class NonFiniteValidationError(FloatingPointError):
+    """The validation loss is NaN or infinite: training has diverged."""
 
 
 class PreemptionSignal:
@@ -132,9 +137,21 @@ def _validate_and_checkpoint(
 ) -> None:
     metrics = validate(module, val_batches, device, settings.max_val_batches)
     logger.log(metrics, state.step)
+    # raised before checkpointing, so the diverged model replaces neither checkpoint
+    _require_finite_validation_loss(metrics, state.step)
     if checkpoints is not None:
         checkpoints.save_if_best(metrics[VALIDATION_LOSS], state)
         checkpoints.save_last(state)
+
+
+def _require_finite_validation_loss(metrics: Dict[str, float], step: int) -> None:
+    if math.isfinite(metrics[VALIDATION_LOSS]):
+        return
+    non_finite = {name: value for name, value in sorted(metrics.items()) if not math.isfinite(value)}
+    raise NonFiniteValidationError(
+        f"validation at step {step} gave {VALIDATION_LOSS} = {metrics[VALIDATION_LOSS]}, so training "
+        f"has diverged and stops; the non-finite validation metrics were {non_finite}"
+    )
 
 
 @torch.no_grad()
