@@ -17,7 +17,9 @@ def test_each_optimizer_steps(name):
         {"name": "cosine", "params": {"eta_min": 0.0}}, max_steps=10,
     )
     before = model[0].weight.detach().clone()
-    model(torch.randn(3, 4)).sum().backward()
+    # weighted, because a LayerNorm's outputs always sum to the same value, which
+    # would leave the linear layer without a gradient
+    (model(torch.randn(3, 4)) * torch.randn(3, 4)).sum().backward()
     optimization.step()
     assert not torch.equal(before, model[0].weight)
 

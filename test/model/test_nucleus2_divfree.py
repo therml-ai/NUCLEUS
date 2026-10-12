@@ -86,6 +86,11 @@ def test_temperature_ansatz_uses_the_normalized_saturation_temperature():
 
 
 def test_each_sample_uses_its_own_parameters(model):
+    with torch.no_grad():
+        # a zero head leaves the temperature to the ansatz's parameters alone; the
+        # network's bfloat16 attention and MoE need not give one sample the same
+        # values in batches of different sizes
+        model.debed.linear.weight.zero_()
     batch = _normalized_batch(model, batch_size=2)
     batched = _run(model, batch).prediction.fields["temperature"]
     for index in range(2):
