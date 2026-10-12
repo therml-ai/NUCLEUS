@@ -19,16 +19,14 @@ export PYTHONPYCACHE_DIR=$TMPDIR/pycache/
 uv sync --no-cache --active --extra cu130
 uv pip install -e .
 
-# BubbleML files converted with boiling-data's scripts/flashx_to_bubbleml.py, and the
-# statistics.json that boiling-data's scripts/bubbleml_statistics.py wrote for them
-DATA_DIR=  # TODO: the converted data
-TEST_PATHS="[$DATA_DIR/TODO.hdf5]"
+# a directory made by boiling-data's scripts/split_dataset.py, holding the
+# statistics.json that its scripts/bubbleml_statistics.py wrote for the train cases
+SPLIT_DIR=  # TODO: the split converted data
 
 # rollouts are written next to the checkpoint, in a rollouts directory
 CKPT=  # TODO: a last.pt or best.pt written by scripts/train/train_nucleus2_moe_divfree.py
 
 python scripts/rollout.py \
     checkpoint_path=$CKPT \
-    data_dir=$DATA_DIR \
-    "data_cfg.test_paths=$TEST_PATHS" \
+    split_dir=$SPLIT_DIR \
     trajectory_steps=300

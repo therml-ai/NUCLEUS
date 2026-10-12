@@ -1,5 +1,6 @@
-# Root path for dataset files, referenced as ${data_dir} in the data_cfg paths.
-data_dir: ???
+# a directory made by boiling-data's scripts/split_dataset.py: train/, val/ and test/
+# directories and the split.json listing their cases. Training reads train and val.
+split_dir: ???
 # directory to write the run's config, checkpoints and wandb files
 log_dir: ???
 # resume training from this checkpoint

@@ -1,8 +1,8 @@
-# Rolls a trained model out from the history frames of every data_cfg.test_paths case
-# and writes each rollout as a BubbleML file named after the case.
+# Rolls a trained model out from the history frames of every test case of split_dir
+# and writes each rollout as a BubbleML file at the case's path within the split.
 checkpoint_path: ???
-# Root path for dataset files, referenced as ${data_dir} in the data_cfg paths.
-data_dir: ???
+# a directory made by boiling-data's scripts/split_dataset.py
+split_dir: ???
 # defaults to a rollouts directory next to the checkpoint
 output_dir:
 

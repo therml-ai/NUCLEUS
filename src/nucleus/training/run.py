@@ -15,7 +15,7 @@ from boiling_data.flashx.normalizer import NormalizerWrapper
 from nucleus.models import get_model, get_model_class
 from nucleus.testing.reference_attention import reference_natten
 from nucleus.training.checkpoint import CheckpointManager, TrainingState, restore_training
-from nucleus.training.data import ForecastDataSettings, forecast_dataloader
+from nucleus.training.data import ForecastDataSettings, forecast_dataloader, read_split
 from nucleus.training.logger import MetricLogger
 from nucleus.training.loop import LoopSettings, TrainingModule, fit
 from nucleus.training.optim import build_optimization
@@ -36,8 +36,9 @@ def run_training(cfg: DictConfig, build_training_module: Callable[[nn.Module, Di
     print(f"total parameters: {count_model_parameters(model, active=False):,d}")
 
     data_settings = _data_settings(cfg)
-    train_batches = forecast_dataloader(cfg.data_cfg.train_paths, model.field_names, model.config_keys, data_settings, shuffle=True)
-    val_batches = forecast_dataloader(cfg.data_cfg.val_paths, model.field_names, model.config_keys, data_settings, shuffle=False)
+    split = read_split(cfg.split_dir)
+    train_batches = forecast_dataloader(split["train"], model.field_names, model.config_keys, data_settings, shuffle=True)
+    val_batches = forecast_dataloader(split["val"], model.field_names, model.config_keys, data_settings, shuffle=False)
     loop_settings = _loop_settings(cfg)
     optimization = build_optimization(
         model, _container(cfg.optim_cfg), _container(cfg.scheduler_cfg), loop_settings.max_steps

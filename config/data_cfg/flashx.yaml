@@ -1,8 +1,4 @@
-# BubbleML files written by boiling-data (e.g. scripts/flashx_to_bubbleml.py), and
-# the normalization statistics computed over the training files with boiling-data's
-# scripts/bubbleml_statistics.py --output.
+# The normalization statistics of the training cases, computed with boiling-data's
+# scripts/bubbleml_statistics.py --output. The cases themselves come from split_dir.
 dataset: flashx
-statistics_path: ${data_dir}/statistics.json
-train_paths: ???
-val_paths: ???
-test_paths: []
+statistics_path: ${split_dir}/statistics.json

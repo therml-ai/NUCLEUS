@@ -20,16 +20,12 @@ export PYTHONPYCACHE_DIR=$TMPDIR/pycache/
 uv sync --no-cache --active --extra cu130
 uv pip install -e .
 
-# BubbleML files converted with boiling-data's scripts/flashx_to_bubbleml.py, and the
-# statistics.json that boiling-data's scripts/bubbleml_statistics.py wrote for them
-DATA_DIR=  # TODO: the converted data
-TRAIN_PATHS="[$DATA_DIR/TODO.hdf5]"
-VAL_PATHS="[$DATA_DIR/TODO.hdf5]"
+# a directory made by boiling-data's scripts/split_dataset.py, holding the
+# statistics.json that its scripts/bubbleml_statistics.py wrote for the train cases
+SPLIT_DIR=  # TODO: the split converted data
 
 python scripts/train/train_nucleus2_moe.py \
-    data_dir=$DATA_DIR \
-    "data_cfg.train_paths=$TRAIN_PATHS" \
-    "data_cfg.val_paths=$VAL_PATHS" \
+    split_dir=$SPLIT_DIR \
     model_cfg.params.processor_blocks=8 \
     model_cfg.params.embed_dim=512 \
     model_cfg.params.num_experts=6 \
