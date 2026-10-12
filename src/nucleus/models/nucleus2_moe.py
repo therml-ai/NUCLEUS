@@ -10,6 +10,7 @@ from nucleus.layers.adaptive_layernorm import AdaptiveLayerNorm
 from nucleus.layers.attention import NeighborhoodAttention
 from nucleus.layers.moe.topk_moe import TopkMoE, TopkMoEOutput, TopkRouterWithBias
 from nucleus.layers.droppath import DropPath
+from nucleus.layers.cast import CastRMSNorm
 from nucleus.layers import (
     AdaptiveEmbed,
     AdaptiveDebed,
@@ -178,34 +179,30 @@ class Nucleus2MoE(nn.Module):
             for idx in range(config.processor_blocks)
         ])
 
-        self.out_norm = nn.RMSNorm(config.embed_dim, dtype=self.debed_dtype)
+        self.out_norm = CastRMSNorm(config.embed_dim)
         
         assert config.patching in ("Linear", "Adaptive")
         if config.patching == "Linear":    
             self.embed = LinearEmbed(
                 patch_size=config.patch_size,
                 in_channels=n_fields,
-                embed_dim=config.embed_dim,
-                dtype=self.embed_dtype
+                embed_dim=config.embed_dim
             )
             self.debed = LinearDebed(
                 patch_size=config.patch_size,
                 embed_dim=config.embed_dim,
-                out_channels=n_fields,
-                dtype=self.debed_dtype
+                out_channels=n_fields
             )
         else:          
             self.embed = AdaptiveEmbed(
                 in_channels=n_fields,
                 out_channels=config.embed_dim,
-                out_shape=(16, 16),
-                dtype=config.embed_dtype
+                out_shape=(16, 16)
             )
             self.debed = AdaptiveDebed(
                 in_channels=config.embed_dim,
                 out_channels=n_fields,
-                patch_shape=(16, 16),
-                dtype=config.debed_dtype
+                patch_shape=(16, 16)
             )
 
     def get_extra_state(self):

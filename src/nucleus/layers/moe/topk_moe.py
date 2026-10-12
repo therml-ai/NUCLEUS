@@ -261,8 +261,9 @@ class TopkMoE_grouped_mm(nn.Module):
         self.intermediate_dim = intermediate_dim
         self.topk = topk
 
-        self.w1 = nn.Parameter(torch.empty(num_experts, intermediate_dim, hidden_dim, dtype=torch.bfloat16))
-        self.w2 = nn.Parameter(torch.empty(num_experts, hidden_dim, intermediate_dim, dtype=torch.bfloat16))
+        # float32, so small updates are not rounded away; cast to the input's dtype in forward
+        self.w1 = nn.Parameter(torch.empty(num_experts, intermediate_dim, hidden_dim))
+        self.w2 = nn.Parameter(torch.empty(num_experts, hidden_dim, intermediate_dim))
         self.reset_parameters()
 
         self.router = router
@@ -282,7 +283,8 @@ class TopkMoE_grouped_mm(nn.Module):
 
         router_output = self.router(x_flat.to(torch.float32))
         topk_indices = router_output.topk_indices.view(N, self.topk)
-        topk_probs   = router_output.topk_probs.view(N, self.topk).to(torch.bfloat16)
+        topk_probs   = router_output.topk_probs.view(N, self.topk).to(x.dtype)
+        w1, w2 = self.w1.to(x.dtype), self.w2.to(x.dtype)
 
         # Sort tokens by expert so groups are contiguous for grouped_mm.
         token_ids  = torch.arange(N, device=x.device).unsqueeze(1).expand(-1, self.topk).reshape(-1)
@@ -303,11 +305,11 @@ class TopkMoE_grouped_mm(nn.Module):
 
         # First grouped GEMM: x_sorted @ w1^T  →  (N*topk, intermediate)
         # w1 is (E, intermediate, C); grouped_mm expects B as (E, C, intermediate) = w1.mT
-        h = F.gelu(F.grouped_mm(x_sorted, self.w1.mT, offs=offs))
+        h = F.gelu(F.grouped_mm(x_sorted, w1.mT, offs=offs))
 
         # Second grouped GEMM: h @ w2^T  →  (N*topk, C)
         # w2 is (E, C, intermediate); grouped_mm expects (E, intermediate, C) = w2.mT
-        out_sorted = F.grouped_mm(h, self.w2.mT, offs=offs)
+        out_sorted = F.grouped_mm(h, w2.mT, offs=offs)
 
         # Scatter weighted outputs back to original token positions.
         out = torch.zeros_like(x_flat)
@@ -338,8 +340,9 @@ class TopkMoE(nn.Module):
         self.intermediate_dim = intermediate_dim
         self.topk = topk
         
-        self.w1 = nn.Parameter(torch.empty(num_experts, intermediate_dim, hidden_dim, dtype=torch.bfloat16))
-        self.w2 = nn.Parameter(torch.empty(num_experts, hidden_dim, intermediate_dim, dtype=torch.bfloat16))
+        # float32, so small updates are not rounded away; cast to the input's dtype in forward
+        self.w1 = nn.Parameter(torch.empty(num_experts, intermediate_dim, hidden_dim))
+        self.w2 = nn.Parameter(torch.empty(num_experts, hidden_dim, intermediate_dim))
         self.reset_parameters()
 
         self.router = router
@@ -366,7 +369,8 @@ class TopkMoE(nn.Module):
         router_output = self.router(x_flat.to(torch.float32))
 
         topk_indices = router_output.topk_indices.view(N, self.topk)
-        topk_probs = router_output.topk_probs.view(N, self.topk).to(torch.bfloat16)
+        topk_probs = router_output.topk_probs.view(N, self.topk).to(x.dtype)
+        w1, w2 = self.w1.to(x.dtype), self.w2.to(x.dtype)
 
         out = torch.zeros_like(x_flat)
 
@@ -378,8 +382,8 @@ class TopkMoE(nn.Module):
             token_idx = expert_weights.nonzero(as_tuple=True)[0]            # (n_e,)
 
             x_e = x_flat[token_idx]                                     # (n_e, C)
-            h = F.gelu(x_e @ self.w1[e].mT)                             # (n_e, intermediate)
-            out_e = h @ self.w2[e].mT                                   # (n_e, C)
+            h = F.gelu(x_e @ w1[e].mT)                             # (n_e, intermediate)
+            out_e = h @ w2[e].mT                                   # (n_e, C)
 
             out.index_add_(0, token_idx, out_e * expert_weights[token_idx].unsqueeze(-1))
 
