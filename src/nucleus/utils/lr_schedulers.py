@@ -1,3 +1,5 @@
+import itertools
+
 from torch.optim.lr_scheduler import CosineAnnealingLR, LambdaLR, SequentialLR, ConstantLR, LinearLR
 
 
@@ -40,26 +42,19 @@ class TrapezoidalLR(SequentialLR):
         eta_min (float): Minimum learning rate
     """
     def __init__(self, optimizer, scale_factor, warmup_iters, flat_iters, cooldown_iters, eta_min=0, last_epoch=-1):
+        phases = [
+            (warmup_iters, lambda: LinearLR(optimizer, start_factor=scale_factor, total_iters=warmup_iters)),
+            (flat_iters, lambda: ConstantLR(optimizer, factor=1.0, total_iters=flat_iters)),
+            (cooldown_iters, lambda: LinearLR(
+                optimizer, start_factor=1.0, end_factor=scale_factor, total_iters=cooldown_iters
+            )),
+        ]
+        # a phase of no iterations is left out rather than built: LinearLR divides by
+        # its total_iters, and each scheduler changes the learning rate when built
+        lengths = [length for length, _ in phases if length > 0]
         super().__init__(
             optimizer,
-            schedulers=[
-                LinearLR(
-                    optimizer,
-                    start_factor=scale_factor,
-                    total_iters=warmup_iters,
-                ),
-                ConstantLR(
-                    optimizer,
-                    factor=1.0,
-                    total_iters=flat_iters,
-                ),
-                LinearLR(
-                    optimizer,
-                    start_factor=1.0,
-                    end_factor=scale_factor,
-                    total_iters=cooldown_iters,
-                ),
-            ],
-            milestones=[warmup_iters, flat_iters + warmup_iters],
+            schedulers=[build() for length, build in phases if length > 0],
+            milestones=list(itertools.accumulate(lengths[:-1])),
             last_epoch=last_epoch,
         )

@@ -33,17 +33,36 @@ def test_adamw_only_decays_matrices():
     assert [group["weight_decay"] for group in groups] == [0.1, 0.0]
 
 
-def test_trapezoidal_fractions_are_of_the_whole_run():
+def _trapezoid_rates(warmup, cooldown, max_steps=10):
+    """The learning rate of every step of a trapezoid peaking at 1."""
     optimization = build_optimization(
         _model(), {"name": "adam", "params": {"lr": 1.0}},
-        {"name": "trapezoidal", "params": {"warmup": 0.2, "cooldown": 0.2, "scale_factor": 0.1}}, max_steps=10,
+        {"name": "trapezoidal", "params": {"warmup": warmup, "cooldown": cooldown, "scale_factor": 0.1}},
+        max_steps=max_steps,
     )
     rates = []
-    for _ in range(10):
+    for _ in range(max_steps):
         rates.append(optimization.learning_rate())
         optimization.step()
+    return rates
+
+
+def test_trapezoidal_fractions_are_of_the_whole_run():
+    rates = _trapezoid_rates(warmup=0.2, cooldown=0.2)
     assert rates[0] == pytest.approx(0.1)
     assert rates[5] == pytest.approx(1.0)
+    assert rates[-1] < 1.0
+
+
+def test_trapezoid_without_a_cooldown_holds_the_peak_to_the_end():
+    rates = _trapezoid_rates(warmup=4, cooldown=0)
+    assert rates[0] == pytest.approx(0.1)
+    assert rates[4:] == pytest.approx([1.0] * 6)
+
+
+def test_trapezoid_without_a_warmup_starts_at_the_peak():
+    rates = _trapezoid_rates(warmup=0, cooldown=4)
+    assert rates[:6] == pytest.approx([1.0] * 6)
     assert rates[-1] < 1.0
 
 
