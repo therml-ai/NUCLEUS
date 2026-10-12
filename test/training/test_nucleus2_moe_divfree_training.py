@@ -1,0 +1,80 @@
+import math
+
+import pytest
+import torch
+
+from nucleus.models import get_model
+from nucleus.models.nucleus2_moe_divfree import Nucleus2MoEDivFree
+from nucleus.physics.coordinates import CellGrid
+from nucleus.physics.poisson import divergence_centers_from_faces
+from nucleus.testing.flashx import flashx_normalizer, random_batch, random_forecast_batch
+from nucleus.training.modules.nucleus2_moe_divfree import (
+    Nucleus2MoEDivFreeTraining,
+    Nucleus2MoEDivFreeTrainingSettings,
+    auxiliary_targets,
+)
+
+FIELD_NAMES = Nucleus2MoEDivFree.field_names
+
+
+@pytest.fixture
+def divfree_training():
+    torch.manual_seed(0)
+    normalizer = flashx_normalizer(FIELD_NAMES, vector_fields=Nucleus2MoEDivFree.vector_fields)
+    model = get_model(
+        "nucleus2_moe_divfree", normalizer, patch_size=4, embed_dim=64, num_heads=2, processor_blocks=1,
+        num_experts=2, topk=1, moe_intermediate_dim=32, patching="Linear",
+    )
+    return Nucleus2MoEDivFreeTraining(model, Nucleus2MoEDivFreeTrainingSettings(target_timesteps=2))
+
+
+def _forecast_batch(target_timesteps=2):
+    return random_forecast_batch(FIELD_NAMES, Nucleus2MoEDivFree.config_keys, target_timesteps=target_timesteps)
+
+
+def test_training_step_gives_a_finite_loss_that_backpropagates(divfree_training):
+    output = divfree_training.training_step(_forecast_batch(), step=0)
+    assert torch.isfinite(output.loss)
+    output.loss.backward()
+    gradient_metrics = divfree_training.gradient_metrics(step=0)
+    assert set(gradient_metrics) == {
+        "train/debed/grad_norm", "train/debed/grad_absmax", "train/debed/weight_std", "train/debed/weight_absmax",
+    }
+    assert all(torch.isfinite(value) for value in gradient_metrics.values())
+    assert divfree_training.gradient_metrics(step=1) == {}
+    for name in ("dfun", "velx_sol", "div_source"):
+        assert f"train/mae_{name}" in output.metrics
+
+
+def test_validation_step_scores_the_first_target_window(divfree_training):
+    divfree_training.eval()
+    with torch.no_grad():
+        metrics = divfree_training.validation_step(_forecast_batch(target_timesteps=4))
+    assert math.isfinite(float(metrics["val/loss"]))
+
+
+def test_push_forward_trains_on_a_later_target_window(divfree_training):
+    training = Nucleus2MoEDivFreeTraining(
+        divfree_training.model,
+        Nucleus2MoEDivFreeTrainingSettings(target_timesteps=2, max_unrolls=1, push_forward_probability=1.0),
+    )
+    output = training.training_step(_forecast_batch(target_timesteps=4), step=0)
+    assert output.metrics["train/num_unrolls"] == 1
+    assert torch.isfinite(output.loss)
+
+
+def test_auxiliary_targets_split_the_velocity_into_its_parts():
+    target = random_batch(FIELD_NAMES, Nucleus2MoEDivFree.config_keys, batch_size=1)
+    grid = CellGrid(1 / 16, 1 / 16, torch.zeros(1, 1, 1, 32))
+    parts = auxiliary_targets(target, grid)
+    velx, vely = target.fields["velfacex"], target.fields["velfacey"]
+    torch.testing.assert_close(parts.velx_sol + parts.velx_dil, velx)
+    torch.testing.assert_close(parts.vely_sol + parts.vely_dil, vely)
+    solenoidal_divergence = divergence_centers_from_faces(parts.velx_sol, parts.vely_sol, grid.dx, grid.dy)
+    assert solenoidal_divergence[..., :-1, :].abs().max() < 1e-2
+    torch.testing.assert_close(parts.div_source, divergence_centers_from_faces(velx, vely, grid.dx, grid.dy))
+
+
+def test_sdf_sign_loss_handles_an_all_liquid_target(divfree_training):
+    liquid = torch.full((1, 1, 4, 4), -2.0)
+    assert torch.isfinite(divfree_training._sdf_sign_loss(torch.zeros_like(liquid), liquid))

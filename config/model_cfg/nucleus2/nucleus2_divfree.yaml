@@ -1,6 +1,4 @@
 name: nucleus2_moe_divfree
-train_module_name: divfree_forecast
-layout: "t h w c"
 params:
   patch_size: 4
   embed_dim: 512
