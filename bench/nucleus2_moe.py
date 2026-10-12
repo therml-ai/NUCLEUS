@@ -3,7 +3,7 @@ import torch
 from triton.testing import do_bench
 
 from nucleus.models import Nucleus2MoE, Nucleus2MoEConfig
-from nucleus.data.batching import CollatedBatch
+from nucleus.testing.flashx import flashx_normalizer, random_batch
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--batch_size", type=int, default=1)
@@ -33,17 +33,14 @@ config = Nucleus2MoEConfig(
     moe_dtype=torch.bfloat16
 )
 
-model = Nucleus2MoE(config).to("cuda")
-input = CollatedBatch(
-    input=torch.randn((args.batch_size, args.t, args.height, args.width, 4), dtype=torch.float32, device="cuda"),
-    target=None,
-    sim_params_dict={},
-    sim_params_tensor=torch.randn((args.batch_size, 14), dtype=torch.float32, device="cuda"),
-    dx=torch.tensor(8, dtype=torch.float32, device="cuda"),
-    dy=torch.tensor(8, dtype=torch.float32, device="cuda"),
-    x_grid=None,
-    y_grid=None
+normalizer = flashx_normalizer(Nucleus2MoE.field_names, vector_fields=Nucleus2MoE.vector_fields)
+model = Nucleus2MoE(config, normalizer).to("cuda")
+# as the train script compiles it: the batch-level forward is not traceable with fullgraph
+model.step = torch.compile(model.step, fullgraph=True)
+batch = random_batch(
+    Nucleus2MoE.field_names, Nucleus2MoE.config_keys, args.batch_size, args.t, args.height, args.width
 )
+input = normalizer.normalize(batch).to(torch.device("cuda"))
 
 """
 torch._inductor.config.triton.cudagraph_skip_dynamic_graphs = True
@@ -64,8 +61,8 @@ torch._inductor.config.triton.enable_pdl = True
 if args.backward:
     def forward_and_backward():
         torch.compiler.cudagraph_mark_step_begin()
-        output, _ = model(input)
-        loss = output.sum()
+        output = model(input)
+        loss = output.prediction.stacked_fields(Nucleus2MoE.field_names).sum()
         loss.backward()
     ms, min_ms, max_ms = do_bench(forward_and_backward, quantiles=[0.5, 0.2, 0.8])
 else:
@@ -75,7 +72,7 @@ else:
     forward()
     ms, min_ms, max_ms = do_bench(forward, quantiles=[0.5, 0.2, 0.8])
 
-print(torch.cuda.get_device_name(input.input.device), torch.cuda.get_device_capability(input.input.device))
+print(torch.cuda.get_device_name(input.device), torch.cuda.get_device_capability(input.device))
 if args.backward:
     print("Forward + Backward:")
 else:

@@ -20,8 +20,16 @@ export PYTHONPYCACHE_DIR=$TMPDIR/pycache/
 uv sync --no-cache --active --extra cu130
 uv pip install -e .
 
-python scripts/train.py \
-    model_cfg=nucleus2/nucleus2_divfree \
+# BubbleML files converted with boiling-data's scripts/flashx_to_bubbleml.py, and the
+# statistics.json that boiling-data's scripts/bubbleml_statistics.py wrote for them
+DATA_DIR=  # TODO: the converted data
+TRAIN_PATHS="[$DATA_DIR/TODO.hdf5]"
+VAL_PATHS="[$DATA_DIR/TODO.hdf5]"
+
+python scripts/train/train_nucleus2_moe_divfree.py \
+    data_dir=$DATA_DIR \
+    "data_cfg.train_paths=$TRAIN_PATHS" \
+    "data_cfg.val_paths=$VAL_PATHS" \
     model_cfg.params.processor_blocks=8 \
     model_cfg.params.embed_dim=512 \
     model_cfg.params.num_experts=6 \
@@ -29,16 +37,12 @@ python scripts/train.py \
     model_cfg.params.patch_size=16 \
     model_cfg.params.patching="Linear" \
     model_cfg.params.activation_dtype="float32" \
-    pydataset=in_mem_forecast \
-    data_dir=/share/crsp/lab/amowli/share/BubbleML_staggered/ \
-    data_cfg=singlebubble \
-    normalizer_cfg=divfree \
-    pydataset=in_mem_divfree_forecast \
-    batch_size=16 \
-    accumulate_grad_batches=1 \
+    data.batch_size=16 \
+    data.in_memory=true \
+    loop.accumulate_grad_batches=1 \
     optim_cfg.params.lr=5e-4 \
     optim_cfg.params.weight_decay=1e-2 \
-    max_steps=150000 \
+    loop.max_steps=150000 \
     scheduler_cfg=trapezoidal \
     scheduler_cfg.params.warmup=4000 \
     scheduler_cfg.params.cooldown=40000 \

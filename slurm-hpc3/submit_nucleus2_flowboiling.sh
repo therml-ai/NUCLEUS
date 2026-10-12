@@ -20,8 +20,16 @@ export PYTHONPYCACHE_DIR=$TMPDIR/pycache/
 uv sync --no-cache --active --extra cu130
 uv pip install -e .
 
-python scripts/train.py \
-    model_cfg=nucleus2/nucleus2_experiment \
+# BubbleML files converted with boiling-data's scripts/flashx_to_bubbleml.py, and the
+# statistics.json that boiling-data's scripts/bubbleml_statistics.py wrote for them
+DATA_DIR=  # TODO: the converted data
+TRAIN_PATHS="[$DATA_DIR/TODO.hdf5]"
+VAL_PATHS="[$DATA_DIR/TODO.hdf5]"
+
+python scripts/train/train_nucleus2_moe.py \
+    data_dir=$DATA_DIR \
+    "data_cfg.train_paths=$TRAIN_PATHS" \
+    "data_cfg.val_paths=$VAL_PATHS" \
     model_cfg.params.processor_blocks=8 \
     model_cfg.params.embed_dim=512 \
     model_cfg.params.num_experts=6 \
@@ -29,12 +37,8 @@ python scripts/train.py \
     model_cfg.params.patch_size=16 \
     model_cfg.params.patching="Linear" \
     model_cfg.params.activation_dtype="float32" \
-    data_cfg=flowboiling \
-    data_dir=/share/crsp/lab/amowli/share/BubbleML_2/ \
-    pydataset="forecast" \
-    normalizer_cfg=standard \
-    batch_size=4 \
-    accumulate_grad_batches=2 \
+    data.batch_size=4 \
+    loop.accumulate_grad_batches=2 \
     optim_cfg.params.lr=2e-3 \
     optim_cfg.params.weight_decay=1e-3 \
     scheduler_cfg=trapezoidal \

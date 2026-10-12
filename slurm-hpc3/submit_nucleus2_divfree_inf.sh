@@ -19,18 +19,16 @@ export PYTHONPYCACHE_DIR=$TMPDIR/pycache/
 uv sync --no-cache --active --extra cu130
 uv pip install -e .
 
-uv pip install -e ../boiling-viz/
+# BubbleML files converted with boiling-data's scripts/flashx_to_bubbleml.py, and the
+# statistics.json that boiling-data's scripts/bubbleml_statistics.py wrote for them
+DATA_DIR=  # TODO: the converted data
+TEST_PATHS="[$DATA_DIR/TODO.hdf5]"
 
-CKPT=/pub/afeeney/nucleus_logs/nucleus2_moe_divfree_singlebubble_2026-09-03_55730388/checkpoints/last.ckpt
-ROLLOUT=/pub/afeeney/nucleus_logs/nucleus2_moe_divfree_singlebubble_2026-09-03_55730388/checkpoints/rollouts/saturated_fc72_100/
+# rollouts are written next to the checkpoint, in a rollouts directory
+CKPT=  # TODO: a last.pt or best.pt written by scripts/train/train_nucleus2_moe_divfree.py
 
-python scripts/inf.py \
-    model_cfg=nucleus2/nucleus2_divfree \
+python scripts/rollout.py \
     checkpoint_path=$CKPT \
-    data_dir=/share/crsp/lab/amowli/share/BubbleML_staggered/ \
-    data_cfg=singlebubble \
-    normalizer_cfg=divfree \
-    log_dir=/pub/afeeney/nucleus_logs/ \
-    trajectory_steps=300 \
-
-python scripts/visualize_rollout.py --path $ROLLOUT \
+    data_dir=$DATA_DIR \
+    "data_cfg.test_paths=$TEST_PATHS" \
+    trajectory_steps=300

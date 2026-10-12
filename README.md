@@ -52,38 +52,56 @@ We train and evaluate our models using the BubbleML dataset. This is hosted and 
 The core of NUCLEUS is a library, so the model implementations (and all component modules) can be imported and experimented with in your own code:
 
 ```python
-from nucleus.models import Nucleus1NeighborMoE
-model = Nucleus1NeighborMoE(*args, **kwargs)
+from boiling_data.flashx.normalizer import NormalizerWrapper
+from nucleus.models import get_model
+
+normalizer = NormalizerWrapper.from_json("statistics.json", vector_fields=[("velx", "vely")])
+model = get_model("nucleus2_moe", normalizer, patch_size=16, embed_dim=512, ...)
+output = model(normalizer.normalize(batch))  # batch: a boiling-data FlashXBatch
 ```
 
-Different models may have different `__init__` paramters, these should match the fields listed in the corresponding `config/model_cfg`.
+Model parameters match the fields listed in the corresponding `config/model_cfg`.
+Each model's `forward` takes a normalized `FlashXBatch` holding the model's `field_names`, with a config
+tensor of its `config_keys`, and returns a normalized `FlashXBatch` prediction.
 
-Each model defines a `forward(x: CollatedBatch)` function. The input is always a `CollatedBatch`, which is defined in `src/nucleus/data/batching.py`
+### Data
+
+Training reads BubbleML files written by [boiling-data](https://github.com/therml-ai/boiling-data), e.g. with
+its `scripts/flashx_to_bubbleml.py`, along with normalization statistics computed over the training files:
+
+```bash
+python scripts/bubbleml_statistics.py /path/to/train/*.hdf5 \
+    --fields dfun temperature velx vely velfacex velfacey \
+    --output /path/to/data/statistics.json
+```
 
 ### Training Scripts
 
 Experiment configurations use [hydra](https://github.com/facebookresearch/hydra) and all config files are stored in `config/`.
-Settings can be changed by modifying the config files and can overriden on the command line. A good default is
+Each model has its own training script and config, `scripts/train/train_<model>.py` and `config/train_<model>.yaml`.
+Settings can be changed by modifying the config files and can overriden on the command line:
 
 ```bash
-python scripts/train.py \
-    model_cfg=neighbor_moe/neighbor_moe_exp \
-    data_cfg=poolboiling \
-    normalizer_cfg=standard \
+python scripts/train/train_nucleus2_moe.py \
+    data_dir=/path/to/data \
+    "data_cfg.train_paths=[/path/to/data/case-1.hdf5,/path/to/data/case-2.hdf5]" \
+    "data_cfg.val_paths=[/path/to/data/case-3.hdf5]" \
+    log_dir=/path/to/logs \
     model_cfg.params.patch_size=16
 ```
 
+Add `smoke=true` to run a few steps on any device without wandb or checkpoints. Pass `checkpoint_path` to resume a run.
+
 ### Evaluation Scripts
 
-The inference scripts share the config files used for training. The only requirement is to specify 1. the trained
-model checkpoint that you want to evaluate and 2. the corresponding `model_cfg` file.
+A rollout needs only the trained checkpoint, which holds the model's config and normalization statistics. Each case in
+`data_cfg.test_paths` is rolled out from its history frames and written as a BubbleML file in a `rollouts` directory
+next to the checkpoint.
 
 ```bash
-python scripts/inf.py \
-    --checkpoint_path=/path/to/trained/model \
-    --model_cfg=config_for_checkpoint \
-    --model_cfg.params.patch_size=16
+python scripts/rollout.py \
+    checkpoint_path=/path/to/logs/run/checkpoints/best.pt \
+    data_dir=/path/to/data \
+    "data_cfg.test_paths=[/path/to/data/case-4.hdf5]" \
+    trajectory_steps=300
 ```
-
-It is important that the model cfg matches the settings used for training. Including any parameters that were overriden
-on the command line when running the training script.

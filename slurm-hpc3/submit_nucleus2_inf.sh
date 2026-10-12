@@ -19,11 +19,16 @@ export PYTHONPYCACHE_DIR=$TMPDIR/pycache/
 uv sync --no-cache --active --extra cu130
 uv pip install -e .
 
-python scripts/inf.py \
-    model_cfg=nucleus2/nucleus2_experiment \
-    checkpoint_path=/share/crsp/lab/amowli/share/nucleus2-model-ckpts/neighbor_moe_exp_may13.ckpt \
-    data_dir=/share/crsp/lab/amowli/share/BubbleML_2/ \
-    data_cfg=poolboiling64 \
-    normalizer_cfg=standard \
-    log_dir=/pub/afeeney/nucleus_logs/ \
-    trajectory_steps=1500 \
+# BubbleML files converted with boiling-data's scripts/flashx_to_bubbleml.py, and the
+# statistics.json that boiling-data's scripts/bubbleml_statistics.py wrote for them
+DATA_DIR=  # TODO: the converted data
+TEST_PATHS="[$DATA_DIR/TODO.hdf5]"
+
+# rollouts are written next to the checkpoint, in a rollouts directory
+CKPT=  # TODO: a last.pt or best.pt written by scripts/train/train_nucleus2_moe.py
+
+python scripts/rollout.py \
+    checkpoint_path=$CKPT \
+    data_dir=$DATA_DIR \
+    "data_cfg.test_paths=$TEST_PATHS" \
+    trajectory_steps=1500
