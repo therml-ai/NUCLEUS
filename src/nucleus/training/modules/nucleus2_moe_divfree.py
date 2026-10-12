@@ -33,7 +33,6 @@ class Nucleus2MoEDivFreeTrainingSettings:
     # unrolls past the first target window; the dataset's unroll_steps minus one
     max_unrolls: int = 0
     push_forward_probability: float = 0.0
-    debed_diagnostics_every_n_steps: int = 100
 
 
 @dataclass
@@ -106,9 +105,7 @@ class Nucleus2MoEDivFreeTraining(nn.Module):
         return metrics | _per_field_mae(pairs, "val") | moe_metrics(output.moe_outputs, "val")
 
     @torch.no_grad()
-    def gradient_metrics(self, step: int) -> Metrics:
-        if step % self.settings.debed_diagnostics_every_n_steps != 0:
-            return {}
+    def gradient_metrics(self) -> Metrics:
         head = self.model.debed
         grads = torch.cat([param.grad.flatten() for param in head.parameters() if param.grad is not None])
         weights = torch.cat([param.flatten() for param in head.parameters() if param.ndim >= 2])

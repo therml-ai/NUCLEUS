@@ -33,8 +33,9 @@ class TrainingModule(Protocol):
 
     def validation_step(self, batch: FlashXForecastBatch) -> Metrics: ...
 
-    def gradient_metrics(self, step: int) -> Metrics:
-        """Metrics of the accumulated gradients, read just before the optimizer step."""
+    def gradient_metrics(self) -> Metrics:
+        """Metrics of the accumulated gradients, read just before the optimizer step
+        of a step whose metrics are logged."""
         ...
 
 
@@ -44,7 +45,6 @@ class LoopSettings:
     accumulate_grad_batches: int = 1
     val_every_n_steps: int = 1000
     log_every_n_steps: int = 50
-    grad_norm_every_n_steps: int = 100
     max_val_batches: Optional[int] = None
 
 
@@ -83,9 +83,10 @@ def fit(
     batches = _endless(train_batches)
     with PreemptionSignal() as preemption:
         while state.step < settings.max_steps and not preemption.received:
-            metrics = _optimizer_step(module, batches, optimization, settings, device, state.step)
+            logged = (state.step + 1) % settings.log_every_n_steps == 0
+            metrics = _optimizer_step(module, batches, optimization, settings, device, state.step, logged)
             state.step += 1
-            if state.step % settings.log_every_n_steps == 0:
+            if logged:
                 logger.log(metrics, state.step)
             if val_batches is not None and state.step % settings.val_every_n_steps == 0:
                 _validate_and_checkpoint(module, val_batches, settings, logger, device, checkpoints, state)
@@ -101,14 +102,18 @@ def _optimizer_step(
     settings: LoopSettings,
     device: torch.device,
     step: int,
+    logged: bool,
 ) -> Metrics:
+    """The step's metrics; the gradient ones only on steps whose metrics are logged,
+    as reading the gradients costs a pass over every parameter."""
     module.train()
     started = time.perf_counter()
     for _ in range(settings.accumulate_grad_batches):
         output = module.training_step(next(batches).to(device, non_blocking=True), step)
         (output.loss / settings.accumulate_grad_batches).backward()
-    metrics = dict(output.metrics) | module.gradient_metrics(step)
-    if step % settings.grad_norm_every_n_steps == 0:
+    metrics = dict(output.metrics)
+    if logged:
+        metrics |= module.gradient_metrics()
         metrics["train/grad_norm"] = torch.nn.utils.clip_grad_norm_(module.model.parameters(), max_norm=float("inf"))
     metrics["train/learning_rate"] = optimization.learning_rate()
     optimization.step()

@@ -35,7 +35,6 @@ loop:
   accumulate_grad_batches: 1
   val_every_n_steps: 1000
   log_every_n_steps: 50
-  grad_norm_every_n_steps: 100
   max_val_batches:
 
 training:
@@ -47,7 +46,6 @@ training:
   # with probability push_forward_probability, train on up to unroll_steps - 1
   # windows predicted by the model itself
   push_forward_probability: 0.0
-  debed_diagnostics_every_n_steps: 100
 
 defaults:
   - _self_

@@ -36,12 +36,11 @@ def test_training_step_gives_a_finite_loss_that_backpropagates(divfree_training)
     output = divfree_training.training_step(_forecast_batch(), step=0)
     assert torch.isfinite(output.loss)
     output.loss.backward()
-    gradient_metrics = divfree_training.gradient_metrics(step=0)
+    gradient_metrics = divfree_training.gradient_metrics()
     assert set(gradient_metrics) == {
         "train/debed/grad_norm", "train/debed/grad_absmax", "train/debed/weight_std", "train/debed/weight_absmax",
     }
     assert all(torch.isfinite(value) for value in gradient_metrics.values())
-    assert divfree_training.gradient_metrics(step=1) == {}
     for name in ("dfun", "velx_sol", "div_source"):
         assert f"train/mae_{name}" in output.metrics
 

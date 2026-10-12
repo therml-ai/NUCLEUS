@@ -77,3 +77,25 @@ def test_validate_averages_the_metrics_over_batches(moe_training):
     assert math.isfinite(metrics["val/loss"])
     with pytest.raises(ValueError, match="no validation batches"):
         validate(moe_training, [], torch.device("cpu"))
+
+
+class _RecordingLogger(MetricLogger):
+    def __init__(self):
+        super().__init__()
+        self.logged = {}
+
+    def log(self, metrics, step):
+        self.logged[step] = dict(metrics)
+
+
+def test_every_logged_step_has_the_gradient_norm(moe_training):
+    logger = _RecordingLogger()
+    optimization = build_optimization(moe_training.model, OPTIM, SCHEDULER, max_steps=4)
+    fit(
+        moe_training, _batches(), None, optimization,
+        _settings(max_steps=4, log_every_n_steps=2), logger, torch.device("cpu"),
+    )
+    assert sorted(logger.logged) == [2, 4]
+    for metrics in logger.logged.values():
+        assert math.isfinite(float(metrics["train/grad_norm"]))
+        assert "train/loss" in metrics

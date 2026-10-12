@@ -75,7 +75,7 @@ class Nucleus2MoETraining(nn.Module):
         metrics = {"val/loss": torch.nn.functional.l1_loss(prediction, target)}
         return metrics | prediction_metrics(prediction, target, "val") | moe_metrics(output.moe_outputs, "val")
 
-    def gradient_metrics(self, step: int) -> Metrics:
+    def gradient_metrics(self) -> Metrics:
         return {}
 
     def _next_window(self, window: FlashXBatch) -> FlashXBatch:
