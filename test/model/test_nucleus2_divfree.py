@@ -4,7 +4,8 @@ from boiling_data.flashx.batch import FlashXBatch
 from boiling_data.flashx.normalizer import NormalizerWrapper
 
 from nucleus.models import get_model
-from nucleus.models.nucleus2_moe_divfree import Nucleus2MoEDivFree
+from nucleus.models.flashx_io import set_runtime_options
+from nucleus.models.nucleus2_moe_divfree import Nucleus2MoEDivFree, divfree_physics, heater_mask
 from nucleus.physics.poisson import divergence_centers_from_faces
 from nucleus.testing.flashx import flashx_config, flashx_statistics, random_batch
 from nucleus.testing.reference_attention import reference_natten
@@ -18,12 +19,12 @@ SMALL_MODEL = dict(
 INTERIOR = (slice(None), slice(None), slice(None, -1), slice(None))
 
 
-def _model(statistics=None) -> Nucleus2MoEDivFree:
+def _model(statistics=None, **config) -> Nucleus2MoEDivFree:
     torch.manual_seed(0)
     normalizer = NormalizerWrapper(
         statistics or flashx_statistics(FIELD_NAMES), vector_fields=Nucleus2MoEDivFree.vector_fields
     )
-    return get_model("nucleus2_moe_divfree", normalizer, **SMALL_MODEL)
+    return get_model("nucleus2_moe_divfree", normalizer, **SMALL_MODEL, **config)
 
 
 @pytest.fixture
@@ -48,8 +49,8 @@ def test_forward_predicts_every_field_on_its_natural_grid(model):
         assert output.prediction.fields[name].shape == batch.fields[name].shape
         assert torch.isfinite(output.prediction.fields[name]).all()
     assert output.prediction.is_normalized
-    assert output.velx_sol.shape == batch.fields["velfacex"].shape
-    assert output.phi.shape == batch.fields["dfun"].shape
+    assert output.nn_velx_df.shape == output.velx_div_proj.shape == batch.fields["velfacex"].shape
+    assert output.div_source.shape == batch.fields["dfun"].shape
     assert (output.grid.dx, output.grid.dy) == (pytest.approx(1 / 16), pytest.approx(1 / 16))
 
 
@@ -71,7 +72,7 @@ def test_temperature_ansatz_uses_the_normalized_saturation_temperature():
     # normalized saturation temperatures gives a detectably wrong value
     statistics = flashx_statistics(FIELD_NAMES)
     statistics["fields"]["temperature"] |= {"mean": 0.3, "std": 2.0}
-    model = _model(statistics)
+    model = _model(statistics, use_temperature_ansatz=True)
     with torch.no_grad():
         # the debed's linear layer has no bias, so a zero weight makes every head
         # output zero: the sdf sits on the interface and the network adds nothing
@@ -85,7 +86,17 @@ def test_temperature_ansatz_uses_the_normalized_saturation_temperature():
     torch.testing.assert_close(far_from_heater, torch.full_like(far_from_heater, expected), atol=1e-4, rtol=0)
 
 
-def test_each_sample_uses_its_own_parameters(model):
+def test_without_the_temperature_ansatz_the_temperature_is_the_networks(model):
+    with torch.no_grad():
+        # a zero head makes the network's temperature zero, where the ansatz would put
+        # the saturation and heater temperatures
+        model.debed.linear.weight.zero_()
+    temperature = _run(model, _normalized_batch(model)).prediction.fields["temperature"]
+    torch.testing.assert_close(temperature, torch.zeros_like(temperature))
+
+
+def test_each_sample_uses_its_own_parameters():
+    model = _model(use_temperature_ansatz=True)
     with torch.no_grad():
         # a zero head leaves the temperature to the ansatz's parameters alone; the
         # network's bfloat16 attention and MoE need not give one sample the same
@@ -103,12 +114,15 @@ def test_each_sample_uses_its_own_parameters(model):
     assert not torch.allclose(batched[0], batched[1])
 
 
-def test_div_projection_makes_the_solenoidal_part_divergence_free(model):
+@pytest.mark.parametrize("use_div_projection", [True, False])
+def test_the_prediction_holds_the_requested_velocities(model, use_div_projection):
     with torch.no_grad():
         model.debed.linear.weight.normal_()
-    output = _run(model, _normalized_batch(model), use_div_projection=True)
-    divergence = divergence_centers_from_faces(output.velx_sol, output.vely_sol, output.grid.dx, output.grid.dy)
-    assert divergence[INTERIOR].abs().max() < 1e-2
+    output = _run(model, _normalized_batch(model), use_div_projection=use_div_projection)
+    velx, vely = (output.velx_div_proj, output.vely_div_proj) if use_div_projection else (output.nn_velx_df, output.nn_vely_df)
+    assert torch.equal(output.prediction.fields["velfacex"], velx)
+    assert torch.equal(output.prediction.fields["velfacey"], vely)
+    assert not torch.allclose(output.velx_div_proj, output.nn_velx_df)
 
 
 def test_div_gate_confines_divergence_to_the_interface_band(model):
@@ -117,16 +131,15 @@ def test_div_gate_confines_divergence_to_the_interface_band(model):
         # divergence source nonzero
         model.debed.linear.weight.normal_(std=0.3)
     batch = _normalized_batch(model)
-    gated = _run(model, batch, use_div_projection=True, use_div_gate=True)
-    ungated = _run(model, batch, use_div_projection=True, use_div_gate=False)
+    gated = _run(model, batch, use_div_gate=True)
+    ungated = _run(model, batch, use_div_gate=False)
 
     sdf = model.normalizer.unnormalize_field("dfun", gated.prediction.fields["dfun"])
     in_band = (sdf.abs() <= 5 * gated.grid.dx)[INTERIOR]
     assert in_band.any() and (~in_band).any()
 
     def divergence(output):
-        fields = output.prediction.fields
-        return divergence_centers_from_faces(fields["velfacex"], fields["velfacey"], output.grid.dx, output.grid.dy)[INTERIOR]
+        return _projected_divergence(output)[INTERIOR]
 
     assert divergence(gated)[~in_band].abs().max() < 1e-2
     assert divergence(gated)[in_band].abs().max() > 1e-1
@@ -170,7 +183,143 @@ def test_a_batch_mixing_grid_spacings_is_rejected(model):
 
 def test_predict_next_gives_raw_frames_that_extend_the_window(model):
     window = random_batch(FIELD_NAMES, model.config_keys)
-    prediction = model.predict_next(window, num_timesteps=1)
+    prediction = model.predict_next(window, num_timesteps=1, target_timesteps=2)
     assert not prediction.is_normalized and prediction.num_timesteps == 1
     assert prediction.fields["velfacey"].shape[-2:] == window.fields["velfacey"].shape[-2:]
     assert window.extend(prediction).num_timesteps == window.num_timesteps + 1
+
+
+def _projected_divergence(output):
+    return divergence_centers_from_faces(output.velx_div_proj, output.vely_div_proj, output.grid.dx, output.grid.dy)
+
+
+@pytest.mark.parametrize("use_mass_transfer", [False, True])
+def test_the_projected_velocity_diverges_as_the_gated_source(model, use_mass_transfer):
+    with torch.no_grad():
+        model.debed.linear.weight.normal_(std=0.3)
+    output = _run(model, _normalized_batch(model), use_div_gate=True, use_mass_transfer=use_mass_transfer)
+    torch.testing.assert_close(
+        _projected_divergence(output)[INTERIOR], output.gated_div_source[INTERIOR], atol=1e-3, rtol=0
+    )
+
+
+def test_the_config_sets_the_physics_a_call_does_not(model):
+    # eval, so drop-path does not make the compared runs differ
+    model.eval()
+    with torch.no_grad():
+        model.debed.linear.weight.normal_(std=0.3)
+    batch = _normalized_batch(model)
+    model.config.use_mass_transfer = True
+    torch.testing.assert_close(_run(model, batch).div_source, _run(model, batch, use_mass_transfer=True).div_source)
+    assert not torch.allclose(_run(model, batch, use_mass_transfer=False).div_source, _run(model, batch).div_source)
+
+
+@pytest.mark.parametrize("use_div_projection", [True, False])
+def test_rollouts_use_the_velocity_the_config_asks_for(model, use_div_projection):
+    # eval, so drop-path does not make the compared runs differ
+    model.eval()
+    with torch.no_grad():
+        model.debed.linear.weight.normal_(std=0.3)
+    model.config.use_div_projection = use_div_projection
+    window = random_batch(FIELD_NAMES, model.config_keys)
+    output = _run(model, model.normalizer.normalize(window))
+    expected = output.velx_div_proj if use_div_projection else output.nn_velx_df
+    predicted = model.predict_next(window, num_timesteps=1, target_timesteps=2).fields["velfacex"]
+    # the first frame of the two after the input
+    torch.testing.assert_close(predicted, model.normalizer.unnormalize_field("velfacex", expected[:, :1]))
+
+
+def test_the_continuity_source_is_not_gated(model):
+    with torch.no_grad():
+        model.debed.linear.weight.normal_(std=0.3)
+    output = _run(model, _normalized_batch(model), use_div_gate=True, use_mass_transfer=True)
+    torch.testing.assert_close(output.gated_div_source, output.div_source)
+
+
+def test_loading_a_checkpoint_keeps_the_runtime_options_the_model_was_built_with():
+    saved = _model(use_div_projection=False, use_mass_transfer=False)
+    resumed = _model(use_div_projection=True, use_mass_transfer=True)
+    resumed.load_state_dict(saved.state_dict())
+    assert resumed.config.use_div_projection and resumed.config.use_mass_transfer
+    for name, tensor in saved.state_dict().items():
+        if isinstance(tensor, torch.Tensor):
+            torch.testing.assert_close(resumed.state_dict()[name], tensor)
+
+
+def test_runtime_options_are_set_from_params_and_the_architecture_kept(model):
+    set_runtime_options(model, {"use_div_projection": True, "embed_dim": 512, "processor_blocks": 12})
+    assert model.config.use_div_projection
+    assert (model.config.embed_dim, model.config.processor_blocks) == (64, 2)
+
+
+def test_the_continuity_source_sends_no_gradient_to_the_sdf(model):
+    with torch.no_grad():
+        model.debed.linear.weight.normal_(std=0.3)
+    with reference_natten():
+        output = model(_normalized_batch(model), use_mass_transfer=True)
+    output.div_source.sum().backward()
+    # the debed's output rows are laid out channel first: sdf, then temperature
+    rows_per_channel = SMALL_MODEL["patch_size"] ** 2
+    grad = model.debed.linear.weight.grad
+    assert torch.count_nonzero(grad[:rows_per_channel]) == 0
+    assert torch.count_nonzero(grad[rows_per_channel:2 * rows_per_channel]) > 0
+
+
+def test_the_heater_mask_marks_the_cells_over_the_heater(model):
+    # flashx_config's heater spans x in [-0.5, 0.5] on 32 cells over [-1, 1]
+    physics = divfree_physics(random_batch(FIELD_NAMES, model.config_keys, batch_size=1), 32, 32)
+    mask = heater_mask(physics)[0, 0, 0]
+    x_centers = physics.grid.x_centers[0, 0, 0]
+    assert mask.sum() == 16
+    assert torch.equal(mask, (x_centers > -0.5) & (x_centers < 0.5))
+
+
+def _faces_divergence(velx, vely, grid):
+    return divergence_centers_from_faces(velx, vely, grid.dx, grid.dy)
+
+
+def test_velocity_boundaries_set_the_walls_and_the_outflow(model):
+    with torch.no_grad():
+        model.debed.linear.weight.normal_(std=0.3)
+    batch = _normalized_batch(model)
+    free = _run(model, batch)
+    bounded = _run(model, batch, use_velocity_boundaries=True)
+    # flashx_config: no-slip left, right and bottom walls, outflow at the top
+    assert free.nn_velx_df[..., 0].abs().max() > 0 and free.nn_vely_df[..., 0, :].abs().max() > 0
+    for velocities in ((bounded.nn_velx_df, bounded.nn_vely_df), (bounded.velx_div_proj, bounded.vely_div_proj)):
+        velx, vely = velocities
+        assert velx[..., 0].abs().max() == 0 and velx[..., -1].abs().max() == 0
+        assert vely[..., 0, :].abs().max() == 0
+    top_cells = _faces_divergence(bounded.nn_velx_df, bounded.nn_vely_df, bounded.grid)[..., -1, :]
+    assert top_cells.abs().max() < 1e-4
+    torch.testing.assert_close(bounded.prediction.fields["velfacex"], bounded.nn_velx_df)
+
+
+def test_each_sample_gets_its_own_velocity_boundaries(model):
+    batch = random_batch(FIELD_NAMES, model.config_keys, batch_size=2)
+    inflow = flashx_config()
+    inflow["boundary"]["left"] = {"type": "inflow_ins"}
+    batch = FlashXBatch(dict(batch.fields), [flashx_config(), inflow], batch.config_keys)
+    with torch.no_grad():
+        model.debed.linear.weight.normal_(std=0.3)
+    output = _run(model, model.normalizer.normalize(batch), use_velocity_boundaries=True)
+    assert output.nn_velx_df[0, ..., 0].abs().max() == 0
+    # an inflow keeps the network's velocity
+    assert output.nn_velx_df[1, ..., 0].abs().max() > 0
+    assert output.nn_velx_df[1, ..., -1].abs().max() == 0
+
+
+def test_an_unknown_boundary_type_is_rejected(model):
+    config = flashx_config()
+    config["boundary"]["top"] = {"type": "periodic"}
+    batch = random_batch(FIELD_NAMES, model.config_keys, batch_size=1)
+    batch = FlashXBatch(dict(batch.fields), [config], batch.config_keys)
+    _run(model, model.normalizer.normalize(batch))  # only read when asked for
+    with pytest.raises(ValueError, match="no face velocity condition for boundary type 'periodic'"):
+        _run(model, model.normalizer.normalize(batch), use_velocity_boundaries=True)
+
+
+def test_checkpoints_from_before_the_option_keep_the_temperature_ansatz():
+    config = _model().get_extra_state()["config"]
+    del config["use_temperature_ansatz"]
+    assert Nucleus2MoEDivFree.config_from_dict(config).use_temperature_ansatz

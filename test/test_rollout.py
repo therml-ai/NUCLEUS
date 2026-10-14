@@ -16,7 +16,7 @@ class _NextFrameCounter(torch.nn.Module):
     """Predicts the frames after a window as the last frame's index plus one, two, ..."""
     field_names = ("dfun",)
 
-    def predict_next(self, window, num_timesteps):
+    def predict_next(self, window, num_timesteps, target_timesteps):
         last = window.fields["dfun"][:, -1:]
         steps = torch.arange(1, num_timesteps + 1, dtype=last.dtype)[None, :, None, None]
         return window.with_fields({"dfun": last + steps})
@@ -30,15 +30,17 @@ def _frames(num_timesteps):
 
 @pytest.mark.parametrize("num_steps", [1, 5, 8])
 def test_rollout_predicts_exactly_num_steps_frames_in_order(num_steps):
-    predicted = rollout(_NextFrameCounter(), _frames(3), num_steps, frames_per_step=2)
+    predicted = rollout(_NextFrameCounter(), _frames(3), num_steps, frames_per_step=2, target_timesteps=3)
     assert predicted.fields["dfun"][0, :, 0, 0].tolist() == [float(frame) for frame in range(3, 3 + num_steps)]
 
 
 def test_rollout_checks_its_settings():
     with pytest.raises(ValueError, match="frames_per_step"):
-        rollout(_NextFrameCounter(), _frames(3), 4, frames_per_step=4)
+        rollout(_NextFrameCounter(), _frames(3), 4, frames_per_step=3, target_timesteps=2)
+    with pytest.raises(ValueError, match="target_timesteps"):
+        rollout(_NextFrameCounter(), _frames(3), 4, frames_per_step=1, target_timesteps=4)
     with pytest.raises(ValueError, match="num_steps"):
-        rollout(_NextFrameCounter(), _frames(3), 0, frames_per_step=1)
+        rollout(_NextFrameCounter(), _frames(3), 0, frames_per_step=1, target_timesteps=1)
 
 
 @pytest.fixture
@@ -59,7 +61,7 @@ def case_path(tmp_path):
 
 
 def test_a_rollout_is_written_as_a_bubbleml_file(model, case_path, tmp_path):
-    settings = RolloutSettings(start_frame=2, history_timesteps=2, trajectory_steps=3, frames_per_step=2)
+    settings = RolloutSettings(start_frame=2, history_timesteps=2, trajectory_steps=3, target_timesteps=2, frames_per_step=2)
     prediction, time = rollout_case(model, case_path, settings, torch.device("cpu"))
     np.testing.assert_allclose(time, [2.0, 2.5, 3.0])
 
@@ -76,6 +78,6 @@ def test_a_rollout_is_written_as_a_bubbleml_file(model, case_path, tmp_path):
 
 
 def test_a_case_too_short_for_the_history_is_rejected(model, case_path):
-    settings = RolloutSettings(start_frame=5, history_timesteps=2, trajectory_steps=1, frames_per_step=1)
+    settings = RolloutSettings(start_frame=5, history_timesteps=2, trajectory_steps=1, target_timesteps=1, frames_per_step=1)
     with pytest.raises(ValueError, match="no 2 frames from frame 5"):
         rollout_case(model, case_path, settings, torch.device("cpu"))

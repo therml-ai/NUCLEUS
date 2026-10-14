@@ -52,7 +52,7 @@ def test_gradients_are_finite(model):
 
 def test_predict_next_gives_raw_frames_that_extend_the_window(model):
     window = _batch(model)
-    prediction = model.predict_next(window, num_timesteps=1)
+    prediction = model.predict_next(window, num_timesteps=1, target_timesteps=2)
     assert not prediction.is_normalized
     assert prediction.num_timesteps == 1
     assert window.extend(prediction).num_timesteps == window.num_timesteps + 1

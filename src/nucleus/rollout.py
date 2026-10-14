@@ -14,23 +14,31 @@ class RolloutSettings:
     start_frame: int
     history_timesteps: int
     trajectory_steps: int
-    # frames predicted per model call, at most history_timesteps
+    # the target window the model was trained on, at most history_timesteps
+    target_timesteps: int
+    # frames kept from each model call, at most target_timesteps
     frames_per_step: int
 
 
 @torch.no_grad()
-def rollout(model: nn.Module, history: FlashXBatch, num_steps: int, frames_per_step: int) -> FlashXBatch:
+def rollout(
+    model: nn.Module, history: FlashXBatch, num_steps: int, frames_per_step: int, target_timesteps: int
+) -> FlashXBatch:
     """The num_steps frames a model predicts after a raw history, a few at a time,
     each call seeing the latest history.num_timesteps frames. The model's
-    predict_next maps a raw window to the raw frames that follow it."""
-    if not 1 <= frames_per_step <= history.num_timesteps:
-        raise ValueError(f"frames_per_step must be in [1, {history.num_timesteps}], not {frames_per_step}")
+    predict_next maps a raw window to the raw frames that follow it; it was trained
+    to predict target_timesteps of them."""
+    if not 1 <= frames_per_step <= target_timesteps <= history.num_timesteps:
+        raise ValueError(
+            f"need 1 <= frames_per_step <= target_timesteps <= {history.num_timesteps}, the history, not "
+            f"frames_per_step={frames_per_step} and target_timesteps={target_timesteps}"
+        )
     if num_steps < 1:
         raise ValueError(f"num_steps must be positive, not {num_steps}")
     window, predicted = history, None
     while predicted is None or predicted.num_timesteps < num_steps:
         remaining = num_steps - (0 if predicted is None else predicted.num_timesteps)
-        frames = model.predict_next(window, min(frames_per_step, remaining))
+        frames = model.predict_next(window, min(frames_per_step, remaining), target_timesteps)
         predicted = frames if predicted is None else predicted.extend(frames)
         window = window.extend(frames).tail_time_window(history.num_timesteps)
     return predicted
@@ -46,7 +54,9 @@ def rollout_case(
     if simulation.num_timesteps != settings.history_timesteps:
         raise ValueError(f"{path} has no {settings.history_timesteps} frames from frame {settings.start_frame}")
     history = batch_from_simulation(simulation, model.field_names, model.config_keys, device=device)
-    predicted = rollout(model, history, settings.trajectory_steps, settings.frames_per_step)
+    predicted = rollout(
+        model, history, settings.trajectory_steps, settings.frames_per_step, settings.target_timesteps
+    )
     return predicted, _following_times(simulation.time, simulation.parameters.discretization, settings.trajectory_steps)
 
 

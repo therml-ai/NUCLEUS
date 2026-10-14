@@ -67,13 +67,17 @@ tensor of its `config_keys`, and returns a normalized `FlashXBatch` prediction.
 ### Data
 
 Training reads BubbleML files written by [boiling-data](https://github.com/therml-ai/boiling-data), e.g. with
-its `scripts/flashx_to_bubbleml.py`, along with normalization statistics computed over the training files:
+its `scripts/flashx_to_bubbleml.py`, randomly split into train, val and test cases with its
+`scripts/split_dataset.py`, along with normalization statistics computed over the training cases. With
+boiling-data's scripts:
 
 ```bash
-python scripts/bubbleml_statistics.py /path/to/train/*.hdf5 \
-    --fields dfun temperature velx vely velfacex velfacey \
-    --output /path/to/data/statistics.json
+python scripts/split_dataset.py /path/to/data/*/*.hdf5 --output-dir /path/to/split --seed 0
+python scripts/bubbleml_statistics.py --split-dir /path/to/split \
+    --fields dfun temperature velx vely velfacex velfacey
 ```
+
+NUCLEUS then takes the split directory, `split_dir`, and reads its cases from the `split.json` it holds.
 
 ### Training Scripts
 
@@ -83,25 +87,32 @@ Settings can be changed by modifying the config files and can overriden on the c
 
 ```bash
 python scripts/train/train_nucleus2_moe.py \
-    data_dir=/path/to/data \
-    "data_cfg.train_paths=[/path/to/data/case-1.hdf5,/path/to/data/case-2.hdf5]" \
-    "data_cfg.val_paths=[/path/to/data/case-3.hdf5]" \
+    split_dir=/path/to/split \
     log_dir=/path/to/logs \
     model_cfg.params.patch_size=16
 ```
 
-Add `smoke=true` to run a few steps on any device without wandb or checkpoints. Pass `checkpoint_path` to resume a run.
+To check the data, model and training loop in a few steps, without wandb or checkpoints, run the smoke test on a
+split; any further arguments override the model's training config:
+
+```bash
+python scripts/train/smoke_test.py /path/to/split --model nucleus2_moe model_cfg.params.processor_blocks=2
+```
+
+Pass `checkpoint_path` to resume a run.
 
 ### Evaluation Scripts
 
-A rollout needs only the trained checkpoint, which holds the model's config and normalization statistics. Each case in
-`data_cfg.test_paths` is rolled out from its history frames and written as a BubbleML file in a `rollouts` directory
-next to the checkpoint.
+A rollout needs only the trained checkpoint, which holds the model's config and normalization statistics. Each test case
+of the split is rolled out from its history frames and written as a BubbleML file in a `rollouts` directory next to the
+checkpoint, at the case's path within the split. The model's architecture comes from the checkpoint, but how it is
+run, such as the divfree model's physics options, comes from `model_cfg`, which must name the checkpoint's model; it
+defaults to `nucleus2/nucleus2_divfree`.
 
 ```bash
 python scripts/rollout.py \
     checkpoint_path=/path/to/logs/run/checkpoints/best.pt \
-    data_dir=/path/to/data \
-    "data_cfg.test_paths=[/path/to/data/case-4.hdf5]" \
+    split_dir=/path/to/split \
+    model_cfg=nucleus2/nucleus2_experiment \
     trajectory_steps=300
 ```

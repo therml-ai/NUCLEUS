@@ -9,3 +9,19 @@ params:
   topk: 2
   patching: "Linear"
   activation_dtype: "bfloat16"
+  # hold the temperature at saturation on the interface and at the heater temperature
+  # on the heater; fixed at init, since it sets what the network learns
+  use_temperature_ansatz: false
+  # physics in the forward pass
+  use_sdf_reinit: false
+  # predict the face velocity projected so its divergence equals the divergence
+  # source, rather than the network's own; this applies to training as well
+  use_div_projection: false
+  # zero the network's divergence source away from the interface before the
+  # projection; skipped with use_mass_transfer, whose source is zero there already
+  use_div_gate: false
+  # take the divergence source from the continuity equation, not the network
+  use_mass_transfer: false
+  # set the network's normal face velocity on each boundary from its boundary type:
+  # zero on walls, divergence-free boundary cells on an outflow
+  use_velocity_boundaries: false

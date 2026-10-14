@@ -60,7 +60,7 @@ write tests in the `src/` or `scripts/` directories.
 Check a training script end to end in a few steps, without wandb or checkpoints:
 
 ```console
-python scripts/train/train_nucleus2_moe.py smoke=true data_dir=... "data_cfg.train_paths=[...]" "data_cfg.val_paths=[...]"
+python scripts/train/smoke_test.py /path/to/split --model nucleus2_moe
 ```
 
 ## Slurm

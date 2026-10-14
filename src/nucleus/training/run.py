@@ -1,4 +1,3 @@
-import contextlib
 import os
 import random
 import subprocess
@@ -13,7 +12,7 @@ from torch import nn
 from boiling_data.flashx.normalizer import NormalizerWrapper
 
 from nucleus.models import get_model, get_model_class
-from nucleus.testing.reference_attention import reference_natten
+from nucleus.testing.reference_attention import neighborhood_attention_for
 from nucleus.training.checkpoint import CheckpointManager, TrainingState, restore_training
 from nucleus.training.data import ForecastDataSettings, forecast_dataloader, read_split
 from nucleus.training.logger import MetricLogger
@@ -50,10 +49,8 @@ def run_training(cfg: DictConfig, build_training_module: Callable[[nn.Module, Di
         run_directory = make_run_directory(cfg)
         logger = _wandb_logger(cfg, run_directory)
         checkpoints = CheckpointManager(run_directory / "checkpoints", model, optimization, _container(cfg))
-    # NATTEN cannot backpropagate on the CPU, so CPU runs use the reference attention
-    attention = reference_natten() if device.type == "cpu" else contextlib.nullcontext()
     try:
-        with attention:
+        with neighborhood_attention_for(device):
             state = fit(module, train_batches, val_batches, optimization, loop_settings, logger, device, checkpoints, state)
     except BaseException:
         logger.finish(failed=True)

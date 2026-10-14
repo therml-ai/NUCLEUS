@@ -22,7 +22,9 @@ from boiling_data.flashx.normalizer import NormalizerWrapper
 from nucleus.models.flashx_io import (
     NUCLEUS2_CONFIG_KEYS,
     num_config_columns,
+    next_frames,
     require_normalized,
+    restored_config,
     unnormalized_prediction,
 )
 
@@ -151,6 +153,8 @@ class Nucleus2MoE(nn.Module):
     field_names = ("dfun", "temperature", "velx", "vely")
     # normalized with one shared scale and no offset, so a flip's sign change holds
     vector_fields = (("velx", "vely"),)
+    # config fields that set how the model is run rather than what it learned
+    runtime_options = ()
     num_sim_params = num_config_columns(NUCLEUS2_CONFIG_KEYS)
 
     def __init__(self, config: Nucleus2MoEConfig, normalizer: NormalizerWrapper):
@@ -210,7 +214,7 @@ class Nucleus2MoE(nn.Module):
 
     def set_extra_state(self, state):
         self._model_name = state.get("model_name")
-        self.config = _config_from_dict(state["config"])
+        self.config = restored_config(self.config, _config_from_dict(state["config"]), self.runtime_options)
 
     def forward(self, batch: FlashXBatch) -> Nucleus2MoEOutput:
         """batch: normalized, holding field_names and a config tensor of config_keys."""
@@ -220,10 +224,11 @@ class Nucleus2MoE(nn.Module):
         return Nucleus2MoEOutput(prediction, moe_outputs)
 
     @torch.no_grad()
-    def predict_next(self, window: FlashXBatch, num_timesteps: int) -> FlashXBatch:
-        """The num_timesteps frames that follow a raw (unnormalized) window, raw."""
+    def predict_next(self, window: FlashXBatch, num_timesteps: int, target_timesteps: int) -> FlashXBatch:
+        """The num_timesteps frames that follow a raw (unnormalized) window, raw. The
+        model was trained to predict target_timesteps frames after its input."""
         prediction = self(self.normalizer.normalize(window)).prediction
-        return unnormalized_prediction(self.normalizer, window, prediction.tail_time_window(num_timesteps))
+        return unnormalized_prediction(self.normalizer, window, next_frames(prediction, num_timesteps, target_timesteps))
 
     def step(self, input: torch.Tensor, sim_params: torch.Tensor):
         """

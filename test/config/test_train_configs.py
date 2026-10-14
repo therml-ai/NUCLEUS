@@ -30,3 +30,10 @@ def test_the_statistics_live_in_the_split_directory(config_name):
     with initialize(version_base=None, config_path="../../config"):
         cfg = compose(config_name=config_name, overrides=["split_dir=/my/split"])
     assert cfg.data_cfg.statistics_path == "/my/split/statistics.json"
+
+
+def test_rollouts_take_the_runtime_options_of_a_model_config():
+    with initialize(version_base=None, config_path="../../config"):
+        cfg = compose(config_name="rollout", overrides=["model_cfg.params.use_div_projection=true"])
+    assert cfg.model_cfg.name == "nucleus2_moe_divfree"
+    assert cfg.model_cfg.params.use_div_projection is True

@@ -16,6 +16,30 @@ class FaceVelocityBoundary(Enum):
     CONTINUITY = auto()
 
 
+# Flash-X's boundary types, as boiling-data records them under boundary.<side>.type.
+# A slip wall still has no normal velocity. The inflow profile is not recorded, so
+# an inflow boundary keeps the velocity it has.
+FLASHX_FACE_VELOCITY_BOUNDARIES = {
+    "noslip_ins": FaceVelocityBoundary.WALL,
+    "slip_ins": FaceVelocityBoundary.WALL,
+    "outflow_ins": FaceVelocityBoundary.CONTINUITY,
+    "inflow_ins": FaceVelocityBoundary.NONE,
+}
+
+
+def flashx_face_velocity_boundary(boundary_type) -> FaceVelocityBoundary:
+    """The condition for a Flash-X boundary type; a side with no type keeps its
+    velocity."""
+    if boundary_type is None:
+        return FaceVelocityBoundary.NONE
+    if boundary_type not in FLASHX_FACE_VELOCITY_BOUNDARIES:
+        raise ValueError(
+            f"no face velocity condition for boundary type {boundary_type!r}; the known types are "
+            f"{sorted(FLASHX_FACE_VELOCITY_BOUNDARIES)}"
+        )
+    return FLASHX_FACE_VELOCITY_BOUNDARIES[boundary_type]
+
+
 def apply_velocity_boundaries(
     velfacex: torch.Tensor,
     velfacey: torch.Tensor,

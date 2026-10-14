@@ -1,4 +1,4 @@
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from typing import Iterator, Sequence, Tuple, Union
 from unittest import mock
 
@@ -74,3 +74,10 @@ def reference_natten() -> Iterator[None]:
     with mock.patch.object(natten, "na2d", reference_neighborhood_attention), \
             mock.patch.object(natten, "na3d", reference_neighborhood_attention):
         yield
+
+
+def neighborhood_attention_for(device: torch.device) -> AbstractContextManager:
+    """The context to run the models in on device: the reference attention on CPU,
+    where NATTEN cannot backpropagate and, depending on its build, may have no
+    backend at all, and NATTEN itself elsewhere."""
+    return reference_natten() if device.type == "cpu" else nullcontext()

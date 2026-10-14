@@ -8,10 +8,14 @@ output_dir:
 
 start_frame: 200
 history_timesteps: 8
-# frames predicted per model call, at most history_timesteps
+# the target window the model was trained on, its data.target_timesteps
+target_timesteps: 8
+# frames kept from each model call, at most target_timesteps
 frames_per_step: 8
 trajectory_steps: 300
-
 defaults:
   - _self_
   - data_cfg: flashx
+  # the checkpoint's model; its architecture comes from the checkpoint, and only its
+  # runtime options, such as the divfree physics, come from here
+  - model_cfg: nucleus2/nucleus2_divfree

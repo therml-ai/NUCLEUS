@@ -31,7 +31,10 @@ def flashx_config(width: int = 32, height: int = 32, wall_temp_fraction: float =
             "wall_temp": 50.0 + wall_temp_fraction * (70.0 - 50.0),
             "xMin": -0.5, "xMax": 0.5, "yMin": 0.0, "yMax": 1e-13, "advAngle": 45.0, "rcdAngle": 45.0,
         }],
-        "boundary": {"left": {}, "right": {}, "top": {}, "bottom": {}},
+        "boundary": {
+            "left": {"type": "noslip_ins"}, "right": {"type": "noslip_ins"},
+            "bottom": {"type": "noslip_ins"}, "top": {"type": "outflow_ins"},
+        },
     }
 
 

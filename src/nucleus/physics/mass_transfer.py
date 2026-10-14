@@ -62,13 +62,14 @@ def continuity_from_mass_flux(
     contact_angle=None,
     prop_smear: float = DEFAULT_PROP_SMEAR,
     tol_normal: float = 1e-13,
+    heater_mask=None,
 ) -> torch.Tensor:
     """``div(u)`` from phase change, ``-mass_flux * n . grad(1/rho)``, given a known
     ``mass_flux`` (e.g. the one Flash-X stores). ``mass_flux`` and ``sdf`` are
     ``(..., H, W)``, as is the result. Same density and normals as ``continuity``."""
     # only 1-cell stencils are involved, so a 1-cell halo matches the full pipeline
     halo = 1
-    phi = add_level_set_halo(sdf, halo, dy, contact_angle)
+    phi = add_level_set_halo(sdf, halo, dy, contact_angle, heater_mask)
     rhoc, normal_x, normal_y = _smoothed_density_and_normals(phi, dx, dy, rhogas, prop_smear, tol_normal)
     divergence = continuity_rhs(
         refill_guard_cells(rhoc, halo), normal_x, normal_y, add_halo(mass_flux, halo), dx, dy
@@ -78,15 +79,15 @@ def continuity_from_mass_flux(
 
 def _flashx_mass_transfer_pipeline(
     temp, sdf, sat_temp, dx, dy, stefan, reynolds, prandtl, thermal_conductivity, rhogas,
-    wall_temp, contact_angle, n_extrap_iters, prop_smear, tol_normal, tol_temp,
+    wall_temp, contact_angle, n_extrap_iters, prop_smear, tol_normal, tol_temp, heater_mask=None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Flash-X's path from level set and temperature to ``Multiphase_divergence``,
     on a haloed frame cropped back. Returns ``(mass_flux, divergence)``, each
     ``(..., H, W)``."""
     # the extrapolation reaches one cell per iteration and every stencil one more
     halo = n_extrap_iters + 1
-    phi = add_level_set_halo(sdf, halo, dy, contact_angle)
-    temp = add_temperature_halo(temp, halo, wall_temp)
+    phi = add_level_set_halo(sdf, halo, dy, contact_angle, heater_mask)
+    temp = add_temperature_halo(temp, halo, wall_temp, heater_mask)
     rhoc, normal_x, normal_y = _smoothed_density_and_normals(phi, dx, dy, rhogas, prop_smear, tol_normal)
 
     liquid_flux, vapor_flux = temp_gfm(phi, normal_x, normal_y, temp, sat_temp, dx, dy, tol_temp)
@@ -119,6 +120,7 @@ def mass_transfer(
     prop_smear: float = DEFAULT_PROP_SMEAR,
     tol_normal: float = 1e-13,
     tol_temp: float = 1e-2,
+    heater_mask=None,
 ) -> torch.Tensor:
     """Interfacial mass flux from the Stefan condition, following Flash-X's
     ``MultiphaseEvap`` step for step. ``temp`` and ``sdf`` (``< 0`` liquid) are
@@ -126,12 +128,14 @@ def mass_transfer(
     negative for evaporation and nonzero only on the band the extrapolation reaches.
 
     ``wall_temp`` and ``contact_angle`` (degrees) enter through the heater guard
-    cells; ``None`` gives a zero-gradient wall and a square contact angle. The
+    cells; ``None`` gives a zero-gradient wall and a square contact angle. They apply
+    over the columns ``heater_mask`` ``(..., 1, W)`` marks, or the whole wall without
+    one; the rest of the wall is zero-gradient. The
     material numbers are relative to the liquid; ``n_extrap_iters`` and
     ``prop_smear`` are Flash-X's ``mph_extpIt`` and ``mph_iPropSmear``."""
     mass_flux, _ = _flashx_mass_transfer_pipeline(
         temp, sdf, sat_temp, dx, dy, stefan, reynolds, prandtl, thermal_conductivity, rhogas,
-        wall_temp, contact_angle, n_extrap_iters, prop_smear, tol_normal, tol_temp,
+        wall_temp, contact_angle, n_extrap_iters, prop_smear, tol_normal, tol_temp, heater_mask,
     )
     return mass_flux
 
@@ -153,12 +157,13 @@ def continuity(
     prop_smear: float = DEFAULT_PROP_SMEAR,
     tol_normal: float = 1e-13,
     tol_temp: float = 1e-2,
+    heater_mask=None,
 ) -> torch.Tensor:
     """``div(u)`` from phase change, ``-mdot * n . grad(1/rho)``, shape ``(..., H, W)``.
     Same arguments as ``mass_transfer``. Negated relative to Flash-X's pressure RHS
     so it matches the divergence of the face velocities."""
     _, divergence = _flashx_mass_transfer_pipeline(
         temp, sdf, sat_temp, dx, dy, stefan, reynolds, prandtl, thermal_conductivity, rhogas,
-        wall_temp, contact_angle, n_extrap_iters, prop_smear, tol_normal, tol_temp,
+        wall_temp, contact_angle, n_extrap_iters, prop_smear, tol_normal, tol_temp, heater_mask,
     )
     return -divergence

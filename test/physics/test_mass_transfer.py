@@ -160,3 +160,29 @@ def test_continuity_from_mass_flux_matches_continuity_on_its_own_flux():
     mass_flux = mass_transfer(temp, sdf, 1.0, dx, dy, **kwargs)
     from_flux = continuity_from_mass_flux(mass_flux, sdf, dx, dy, FLUID["rhogas"], contact_angle=45.0)
     assert torch.allclose(from_flux, continuity(temp, sdf, 1.0, dx, dy, **kwargs), atol=1e-12)
+
+
+def _bubble_on_the_wall():
+    torch.manual_seed(9)
+    height, width = 40, 30
+    dx = dy = 1.0 / 32
+    sdf = circular_interface(height, width, dx, dy, center=(0.45, 0.1), radius=0.3)
+    temp = torch.rand(height, width, dtype=torch.float64) * 0.5
+    return temp, sdf, dx, dy
+
+
+def test_the_heater_conditions_apply_only_on_its_columns():
+    temp, sdf, dx, dy = _bubble_on_the_wall()
+    wall = dict(wall_temp=1.0, contact_angle=45.0)
+    width = sdf.shape[-1]
+    nowhere = torch.zeros(1, width, dtype=torch.bool)
+    # off the heater the wall is zero-gradient, as without any heater conditions
+    torch.testing.assert_close(
+        continuity(temp, sdf, 0.0, dx, dy, heater_mask=nowhere, **wall, **FLUID),
+        continuity(temp, sdf, 0.0, dx, dy, **FLUID),
+    )
+    partial = torch.zeros(1, width, dtype=torch.bool)
+    partial[:, : width // 2] = True
+    on_part = continuity(temp, sdf, 0.0, dx, dy, heater_mask=partial, **wall, **FLUID)
+    on_all = continuity(temp, sdf, 0.0, dx, dy, **wall, **FLUID)
+    assert not torch.allclose(on_part, on_all)

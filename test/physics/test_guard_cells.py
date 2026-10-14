@@ -67,3 +67,22 @@ def test_refill_guard_cells_overwrites_halo_with_interior_values():
         assert torch.equal(out[row, 2:-2], field[2, 2:-2])
     assert out[0, 0] == field[2, 2] and out[-1, -1] == field[-3, -3]
     assert refill_guard_cells(field, 0) is field
+
+
+def test_heater_rows_cover_only_the_heater_columns():
+    height, width, halo = 4, 5, 2
+    temp = torch.arange(height, dtype=torch.float64).reshape(-1, 1).expand(height, width) + 1.0
+    heater_mask = torch.tensor([[False, True, True, False, False]])
+    on_heater = torch.cat([torch.zeros(halo, dtype=torch.bool), heater_mask[0], torch.zeros(halo, dtype=torch.bool)])
+
+    padded = add_temperature_halo(temp, halo, wall_temp=10.0, heater_mask=heater_mask)
+    whole_wall = add_temperature_halo(temp, halo, wall_temp=10.0)
+    zero_gradient = add_halo(temp, halo)
+    assert torch.equal(padded[:halo, on_heater], whole_wall[:halo, on_heater])
+    assert torch.equal(padded[:halo, ~on_heater], zero_gradient[:halo, ~on_heater])
+    assert torch.equal(padded[halo:], zero_gradient[halo:])
+
+    sdf = torch.linspace(-1.0, 1.0, height * width, dtype=torch.float64).reshape(height, width)
+    level_set = add_level_set_halo(sdf, halo, 0.1, 45.0, heater_mask=heater_mask)
+    assert torch.equal(level_set[:halo, on_heater], add_level_set_halo(sdf, halo, 0.1, 45.0)[:halo, on_heater])
+    assert torch.equal(level_set[:halo, ~on_heater], add_halo(sdf, halo)[:halo, ~on_heater])

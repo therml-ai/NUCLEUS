@@ -46,6 +46,10 @@ training:
   # with probability push_forward_probability, train on up to unroll_steps - 1
   # windows predicted by the model itself
   push_forward_probability: 0.0
+  # add a cross entropy on the phase the predicted sdf's sign gives
+  use_sdf_sign_loss: True
+  # its weight in the loss; the unweighted cross entropy is logged as sdf_sign_loss
+  sdf_sign_loss_weight: 0.01
 
 defaults:
   - _self_

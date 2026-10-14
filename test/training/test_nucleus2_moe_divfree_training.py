@@ -11,7 +11,7 @@ from nucleus.testing.flashx import flashx_normalizer, random_batch, random_forec
 from nucleus.training.modules.nucleus2_moe_divfree import (
     Nucleus2MoEDivFreeTraining,
     Nucleus2MoEDivFreeTrainingSettings,
-    auxiliary_targets,
+    target_div_source,
 )
 
 FIELD_NAMES = Nucleus2MoEDivFree.field_names
@@ -41,7 +41,7 @@ def test_training_step_gives_a_finite_loss_that_backpropagates(divfree_training)
         "train/debed/grad_norm", "train/debed/grad_absmax", "train/debed/weight_std", "train/debed/weight_absmax",
     }
     assert all(torch.isfinite(value) for value in gradient_metrics.values())
-    for name in ("dfun", "velx_sol", "div_source"):
+    for name in ("dfun", "velfacex", "div_source"):
         assert f"train/mae_{name}" in output.metrics
 
 
@@ -62,18 +62,33 @@ def test_push_forward_trains_on_a_later_target_window(divfree_training):
     assert torch.isfinite(output.loss)
 
 
-def test_auxiliary_targets_split_the_velocity_into_its_parts():
+def test_the_divergence_source_is_supervised_by_the_target_divergence():
     target = random_batch(FIELD_NAMES, Nucleus2MoEDivFree.config_keys, batch_size=1)
     grid = CellGrid(1 / 16, 1 / 16, torch.zeros(1, 1, 1, 32))
-    parts = auxiliary_targets(target, grid)
     velx, vely = target.fields["velfacex"], target.fields["velfacey"]
-    torch.testing.assert_close(parts.velx_sol + parts.velx_dil, velx)
-    torch.testing.assert_close(parts.vely_sol + parts.vely_dil, vely)
-    solenoidal_divergence = divergence_centers_from_faces(parts.velx_sol, parts.vely_sol, grid.dx, grid.dy)
-    assert solenoidal_divergence[..., :-1, :].abs().max() < 1e-2
-    torch.testing.assert_close(parts.div_source, divergence_centers_from_faces(velx, vely, grid.dx, grid.dy))
+    torch.testing.assert_close(
+        target_div_source(target, grid), divergence_centers_from_faces(velx, vely, grid.dx, grid.dy)
+    )
 
 
-def test_sdf_sign_loss_handles_an_all_liquid_target(divfree_training):
+def _training(model, **settings):
+    return Nucleus2MoEDivFreeTraining(model, Nucleus2MoEDivFreeTrainingSettings(target_timesteps=2, **settings))
+
+
+def test_the_sdf_sign_loss_is_off_unless_asked_for(divfree_training):
+    off = divfree_training.training_step(_forecast_batch(), step=0)
+    assert "train/sdf_sign_loss" not in off.metrics
+    torch.testing.assert_close(off.metrics["train/data_loss"], off.loss)
+
+    on = _training(divfree_training.model, use_sdf_sign_loss=True, sdf_sign_loss_weight=0.5).training_step(
+        _forecast_batch(), step=0
+    )
+    assert torch.isfinite(on.metrics["train/sdf_sign_loss"]) and on.metrics["train/sdf_sign_loss"] > 0
+    torch.testing.assert_close(on.loss, on.metrics["train/data_loss"] + 0.5 * on.metrics["train/sdf_sign_loss"])
+    on.loss.backward()
+
+
+def test_the_sdf_sign_loss_handles_an_all_liquid_target(divfree_training):
     liquid = torch.full((1, 1, 4, 4), -2.0)
-    assert torch.isfinite(divfree_training._sdf_sign_loss(torch.zeros_like(liquid), liquid))
+    training = _training(divfree_training.model, use_sdf_sign_loss=True)
+    assert torch.isfinite(training._sdf_sign_loss(torch.zeros_like(liquid), liquid))
