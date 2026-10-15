@@ -2,7 +2,7 @@
 #SBATCH -A amowli_lab_gpu
 #SBATCH -p free-gpu32
 #SBATCH --job-name=train-nucleus-exp
-#SBATCH -o slurm-%x-%j.out
+#SBATCH -o ~/slurm-%x-%j.out
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=100GB

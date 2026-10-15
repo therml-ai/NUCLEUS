@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH -A amowli_lab_gpu
-#SBATCH -p free-gpu32
+#SBATCH -p free-gpu
 #SBATCH --job-name=train-nucleus-singlebubble
 #SBATCH -o slurm-%x-%j.out
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=75GB
-#SBATCH --gres=gpu:RTX6000:1
+#SBATCH --gres=gpu:A30:1
 #SBATCH --time=12:59:00
 
 uv venv $TMPDIR/NUCLEUS
@@ -33,7 +33,6 @@ python scripts/train.py \
     data_dir=/share/crsp/lab/amowli/share/BubbleML_staggered/ \
     data_cfg=singlebubble \
     normalizer_cfg=divfree \
-    pydataset=in_mem_divfree_forecast \
     batch_size=16 \
     accumulate_grad_batches=1 \
     optim_cfg.params.lr=5e-4 \

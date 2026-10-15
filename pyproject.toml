@@ -32,6 +32,7 @@ dependencies = [
     "imgcat>=0.6.0",
     "python-dotenv>=1.2.2,<2",
     "webdataset",
+    "diffusers>=0.39.0",
 ]
 
 [dependency-groups]
@@ -51,7 +52,7 @@ cpu = [
 cu128 = [
     # fully pinned
     "torch==2.11.0,<3",
-    "torchvision>=0.26.0",
+    "torchvision==0.26.0",
     "natten==0.21.6+torch2110cu128",
 ]
 cu130 = [
@@ -79,6 +80,11 @@ conflicts = [
 [tool.uv.sources]
 torch = [
   # For developing on macos, need cpu torch
+  { index = "pytorch-cpu", extra = "cpu" },
+  { index = "pytorch-cu128", extra = "cu128" },
+  { index = "pytorch-cu130", extra = "cu130" },
+]
+torchvision = [
   { index = "pytorch-cpu", extra = "cpu" },
   { index = "pytorch-cu128", extra = "cu128" },
   { index = "pytorch-cu130", extra = "cu130" },

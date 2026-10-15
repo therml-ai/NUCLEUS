@@ -120,17 +120,18 @@ def plot_rollout(
     test_results: TestResults,
     step_size: int,
     include_ground_truth: bool = False,
+    n_jobs: int = 4,
 ):
-    def make_plot(timestep, rollout, targets):
-        sdf, temp, velx, vely = rollout[timestep].unbind(dim=-1)
+    bulk_temp = test_results.fluid_params["bulk_temp"]
+    heater_temp = test_results.fluid_params["heater"]["wallTemp"]
+
+    def make_plot(timestep, prediction_frame, target_frame):
+        sdf, temp, velx, vely = prediction_frame.unbind(dim=-1)
         sdf = torch.flipud(sdf)
         temp = torch.flipud(temp)
         velx = torch.flipud(velx)
         vely = torch.flipud(vely)
         vel_mag = torch.sqrt(velx**2 + vely**2)
-
-        bulk_temp = test_results.fluid_params["bulk_temp"]
-        heater_temp = test_results.fluid_params["heater"]["wallTemp"]
 
         nrows = 2 if include_ground_truth else 1
         fig, axs = plt.subplots(nrows, 3, figsize=(10, 7 if include_ground_truth else 3.5), layout="constrained")
@@ -146,7 +147,7 @@ def plot_rollout(
         plt.colorbar(im, ax=pred_axs[2], fraction=0.04, pad=0.05)
 
         if include_ground_truth:
-            gt_sdf, gt_temp, gt_velx, gt_vely = targets[timestep].unbind(dim=-1)
+            gt_sdf, gt_temp, gt_velx, gt_vely = target_frame.unbind(dim=-1)
             gt_sdf = torch.flipud(gt_sdf)
             gt_temp = torch.flipud(gt_temp)
             gt_velx = torch.flipud(gt_velx)
@@ -170,7 +171,10 @@ def plot_rollout(
     targets = test_results.targets.squeeze(0)
     assert rollout.dim() == 4, "Rollout must be a 4D tensor (T, C, H, W)"
 
-    joblib.Parallel(n_jobs=4)(joblib.delayed(make_plot)(timestep, rollout, targets) for timestep in range(0, rollout.shape[0], step_size))
+    joblib.Parallel(n_jobs=n_jobs)(
+        joblib.delayed(make_plot)(timestep, rollout[timestep], targets[timestep])
+        for timestep in range(0, rollout.shape[0], step_size)
+    )
     
 def plot_rollout_moe_overlay(
     save_dir: str,
