@@ -48,7 +48,7 @@ def cell_center_coordinates(
 
 
 @dataclass(frozen=True)
-class CellGrid:
+class CellCenteredGrid:
     """The cell spacing a batch shares, and every sample's cell-center x
     coordinates, ``(batch, 1, 1, width)`` to broadcast against
     ``(batch, time, height, width)`` fields."""
@@ -57,21 +57,8 @@ class CellGrid:
     x_centers: torch.Tensor
 
 
-def cell_grid(
-    x_min: torch.Tensor, x_max: torch.Tensor, y_min: torch.Tensor, y_max: torch.Tensor, height: int, width: int
-) -> CellGrid:
-    """The grid of ``height`` x ``width`` cells over each sample's domain; every
-    bound is ``(batch,)``. The cell counts come from the fields rather than the
-    simulation's block layout, which downsampled data no longer matches."""
-    dx_per_sample = (x_max - x_min) / width
-    dy_per_sample = (y_max - y_min) / height
-    dx, dy = float(dx_per_sample[0]), float(dy_per_sample[0])
-    # the Poisson solves and finite differences take one spacing per call
-    if not (torch.allclose(dx_per_sample, torch.full_like(dx_per_sample, dx))
-            and torch.allclose(dy_per_sample, torch.full_like(dy_per_sample, dy))):
-        raise ValueError(
-            f"every sample in a batch must share one grid spacing, not dx = {dx_per_sample.tolist()} "
-            f"and dy = {dy_per_sample.tolist()}"
-        )
+def cell_centered_grid(x_min: torch.Tensor, dx: float, dy: float, width: int) -> CellCenteredGrid:
+    """The centers of ``width`` cells spaced by ``dx`` and ``dy``, the first half a
+    cell in from each sample's ``x_min``, ``(batch,)``."""
     offsets = (torch.arange(width, device=x_min.device, dtype=x_min.dtype) + 0.5) * dx
-    return CellGrid(dx, dy, (x_min[:, None] + offsets)[:, None, None, :])
+    return CellCenteredGrid(dx, dy, (x_min[:, None] + offsets)[:, None, None, :])

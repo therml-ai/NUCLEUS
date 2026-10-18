@@ -267,7 +267,7 @@ def test_the_continuity_source_sends_no_gradient_to_the_sdf(model):
 
 def test_the_heater_mask_marks_the_cells_over_the_heater(model):
     # flashx_config's heater spans x in [-0.5, 0.5] on 32 cells over [-1, 1]
-    physics = divfree_physics(random_batch(FIELD_NAMES, model.config_keys, batch_size=1), 32, 32)
+    physics = divfree_physics(random_batch(FIELD_NAMES, model.config_keys, batch_size=1, height=32, width=32))
     mask = heater_mask(physics)[0, 0, 0]
     x_centers = physics.grid.x_centers[0, 0, 0]
     assert mask.sum() == 16

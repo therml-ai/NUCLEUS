@@ -5,7 +5,7 @@ import torch
 
 from nucleus.models import get_model
 from nucleus.models.nucleus2_moe_divfree import Nucleus2MoEDivFree
-from nucleus.physics.coordinates import CellGrid
+from nucleus.physics.coordinates import CellCenteredGrid
 from nucleus.physics.poisson import divergence_centers_from_faces
 from nucleus.testing.flashx import flashx_normalizer, random_batch, random_forecast_batch
 from nucleus.training.modules.nucleus2_moe_divfree import (
@@ -64,31 +64,8 @@ def test_push_forward_trains_on_a_later_target_window(divfree_training):
 
 def test_the_divergence_source_is_supervised_by_the_target_divergence():
     target = random_batch(FIELD_NAMES, Nucleus2MoEDivFree.config_keys, batch_size=1)
-    grid = CellGrid(1 / 16, 1 / 16, torch.zeros(1, 1, 1, 32))
+    grid = CellCenteredGrid(1 / 16, 1 / 16, torch.zeros(1, 1, 1, 32))
     velx, vely = target.fields["velfacex"], target.fields["velfacey"]
     torch.testing.assert_close(
         target_div_source(target, grid), divergence_centers_from_faces(velx, vely, grid.dx, grid.dy)
     )
-
-
-def _training(model, **settings):
-    return Nucleus2MoEDivFreeTraining(model, Nucleus2MoEDivFreeTrainingSettings(target_timesteps=2, **settings))
-
-
-def test_the_sdf_sign_loss_is_off_unless_asked_for(divfree_training):
-    off = divfree_training.training_step(_forecast_batch(), step=0)
-    assert "train/sdf_sign_loss" not in off.metrics
-    torch.testing.assert_close(off.metrics["train/data_loss"], off.loss)
-
-    on = _training(divfree_training.model, use_sdf_sign_loss=True, sdf_sign_loss_weight=0.5).training_step(
-        _forecast_batch(), step=0
-    )
-    assert torch.isfinite(on.metrics["train/sdf_sign_loss"]) and on.metrics["train/sdf_sign_loss"] > 0
-    torch.testing.assert_close(on.loss, on.metrics["train/data_loss"] + 0.5 * on.metrics["train/sdf_sign_loss"])
-    on.loss.backward()
-
-
-def test_the_sdf_sign_loss_handles_an_all_liquid_target(divfree_training):
-    liquid = torch.full((1, 1, 4, 4), -2.0)
-    training = _training(divfree_training.model, use_sdf_sign_loss=True)
-    assert torch.isfinite(training._sdf_sign_loss(torch.zeros_like(liquid), liquid))

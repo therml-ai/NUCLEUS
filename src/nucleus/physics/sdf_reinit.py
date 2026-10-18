@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 
 from nucleus.physics.guard_cells import add_level_set_halo
@@ -31,6 +33,7 @@ def sdf_reinit_sussman(
     dtau: float = None,
     contact_angle=None,
     heater_mask=None,
+    reinit_band: Optional[float] = None,
 ) -> torch.Tensor:
     """
     Redistance ``sdf0`` ``(..., H, W)`` toward ``|grad| = 1`` by Sussman's pseudo-time
@@ -44,6 +47,8 @@ def sdf_reinit_sussman(
             wall (row 0) holds ``d(sdf)/dn = cos(contact_angle)``, as in
             ``add_level_set_halo``. ``None`` is a 90 degree wall.
         heater_mask: ``(..., 1, W)``, the heater's columns; ``None`` is the whole wall
+        reinit_band: only the cells with ``|sdf0| < reinit_band`` are redistanced, the
+            rest keep sdf0; ``None`` redistances every cell
     """
     dy = dx if dy is None else dy
     dtau = 0.5 * min(dx, dy) if dtau is None else dtau
@@ -54,13 +59,15 @@ def sdf_reinit_sussman(
     padded0 = with_halo(sdf0)
     interface = _interface_cells(padded0)
     distance = _distance_to_interface(padded0, dx, dy)
+    in_band = torch.ones_like(interface) if reinit_band is None else sdf0.abs() < reinit_band
     sdf = sdf0
     for _ in range(n_iter):
         # Upwind differences across the interface would move it, so the cells on it
         # relax toward the distance sdf0 gives them instead.
         subcell = (sign0 * sdf.abs() - distance) / min(dx, dy)
         upwind = sign0 * (_godunov_grad_mag(with_halo(sdf), sign0, dx, dy) - 1.0)
-        sdf = sdf - dtau * torch.where(interface, subcell, upwind)
+        update = torch.where(interface, subcell, upwind)
+        sdf = sdf - dtau * torch.where(in_band, update, torch.zeros_like(update))
     return sdf
 
 

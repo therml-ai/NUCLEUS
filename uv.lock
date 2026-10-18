@@ -85,7 +85,7 @@ wheels = [
 [[package]]
 name = "boiling-data"
 version = "0.1.0"
-source = { git = "https://github.com/therml-ai/boiling-data?branch=main#5069b440330a249044b11bcb6d5f97afa391b4fa" }
+source = { git = "https://github.com/therml-ai/boiling-data?branch=main#4f7474823be847bdee3e3f03fb976b4a4a30fa3e" }
 dependencies = [
     { name = "h5py" },
     { name = "numpy" },

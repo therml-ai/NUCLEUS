@@ -27,7 +27,7 @@ from nucleus.models.flashx_io import (
     restored_config,
     unnormalized_prediction,
 )
-from nucleus.physics.coordinates import CellGrid, cell_grid
+from nucleus.physics.coordinates import CellCenteredGrid, cell_centered_grid
 from nucleus.physics.div_projection import div_projection
 from nucleus.physics.velocity_boundaries import (
     FaceVelocityBoundary,
@@ -120,7 +120,7 @@ class Nucleus2MoEDivFreeOutput:
     div_source: torch.Tensor  # cell-centered divergence source, the network's or the continuity equation's
     gated_div_source: torch.Tensor  # div_source, but with zero gating applied away from interfaces
     moe_outputs: list
-    grid: CellGrid
+    grid: CellCenteredGrid
 
 
 @dataclass(frozen=True)
@@ -138,7 +138,7 @@ class DivFreePhysics:
     prandtl: torch.Tensor
     thermal_conductivity: torch.Tensor
     rhogas: torch.Tensor
-    grid: CellGrid
+    grid: CellCenteredGrid
     # each sample's (left, right, bottom, top) face velocity conditions, when asked for
     velocity_boundaries: Tuple[Tuple[FaceVelocityBoundary, ...], ...] = ()
 
@@ -170,13 +170,13 @@ def continuity_source(temp: torch.Tensor, sdf: torch.Tensor, physics: DivFreePhy
     )
 
 
-def divfree_physics(raw: FlashXBatch, height: int, width: int, velocity_boundaries: bool = False) -> DivFreePhysics:
-    """The physics parameters of a batch whose configs are raw (unnormalized), with
-    the samples' face velocity conditions when velocity_boundaries is set."""
+def divfree_physics(raw: FlashXBatch, velocity_boundaries: bool = False) -> DivFreePhysics:
+    """The physics parameters of a raw (unnormalized) batch holding dfun, whose grid
+    sets the cells, with the samples' face velocity conditions when
+    velocity_boundaries is set."""
     parameter = lambda group, name: raw.parameter(group, name)[:, None, None, None]
     bulk_temp = parameter("physical", "bulk_temp")
     temperature_scale = parameter("physical", "wall_temp_scale") - bulk_temp
-    bounds = [raw.parameter("discretization", name) for name in ("x_min", "x_max", "y_min", "y_max")]
     return DivFreePhysics(
         sat_temp=(parameter("physical", "sat_temp") - bulk_temp) / temperature_scale,
         heater_temp=parameter("heaters", "wall_temp_fraction"),
@@ -188,11 +188,25 @@ def divfree_physics(raw: FlashXBatch, height: int, width: int, velocity_boundari
         prandtl=parameter("non_dimensional", "prandtl"),
         thermal_conductivity=parameter("non_dimensional", "thcogas"),
         rhogas=parameter("non_dimensional", "rhogas"),
-        grid=cell_grid(*bounds, height, width),
+        grid=cell_centered_grid(
+            raw.parameter("discretization", "x_min"),
+            shared_spacing(raw.dx("dfun"), "dx"),
+            shared_spacing(raw.dy("dfun"), "dy"),
+            raw.fields["dfun"].shape[-1],
+        ),
         velocity_boundaries=(
             tuple(sample_velocity_boundaries(config) for config in raw.configs) if velocity_boundaries else ()
         ),
     )
+
+
+def shared_spacing(spacing_per_sample: torch.Tensor, name: str) -> float:
+    """The one spacing every sample of a batch has, from its ``(batch,)`` spacings."""
+    spacing = float(spacing_per_sample[0])
+    # the Poisson solves and finite differences take one spacing per call
+    if not torch.allclose(spacing_per_sample, torch.full_like(spacing_per_sample, spacing)):
+        raise ValueError(f"every sample in a batch must share one grid spacing, not {name} = {spacing_per_sample.tolist()}")
+    return spacing
 
 
 def sample_velocity_boundaries(config) -> Tuple[FaceVelocityBoundary, ...]:
@@ -404,10 +418,9 @@ class Nucleus2MoEDivFree(nn.Module):
         use_div_gate = self._option(use_div_gate, "use_div_gate")
         use_mass_transfer = self._option(use_mass_transfer, "use_mass_transfer")
         use_velocity_boundaries = self._option(use_velocity_boundaries, "use_velocity_boundaries")
-        height, width = batch.fields["dfun"].shape[-2:]
-        physics: DivFreePhysics = divfree_physics(
-            self.normalizer.unnormalize(batch.with_fields({})), height, width, use_velocity_boundaries
-        )
+        # the spacing needs the raw configs and the grid of one field, so only dfun is unnormalized
+        raw = self.normalizer.unnormalize(batch.with_fields({"dfun": batch.fields["dfun"]}))
+        physics: DivFreePhysics = divfree_physics(raw, use_velocity_boundaries)
         x, moe_outputs = self.model_step(batch.stack_field_cells(self.field_names), batch.config_tensor())
         nn_sdf, nn_temp, nn_vel_top, nn_vel_bot, nn_vel_left, nn_vel_right, nn_div_source = x.unbind(-1)
         faces = unstack_field_cells(

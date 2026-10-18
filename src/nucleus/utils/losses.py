@@ -152,22 +152,6 @@ def field_gradient_loss(pred_fields: torch.Tensor, target_fields: torch.Tensor) 
         + torch.nn.functional.l1_loss(pred_grad_y, target_grad_y)
     )
 
-def sdf_sign_bce_loss(pred_sdf: torch.Tensor, target_sdf: torch.Tensor, vapor_weight: float) -> torch.Tensor:
-    """Binary cross-entropy between the predicted and target SDF's sign (phase:
-    sdf > 0 is vapor, sdf < 0 is liquid), both in physical units. Treats the
-    physical sdf value directly as a logit, so a sign (phase) misclassification is
-    penalized much more sharply than an L1 magnitude error would -- a single
-    sign-flipped pixel barely moves an L1 loss but is a large BCE error.
-    vapor_weight up-weights the positive (vapor) class, which is a small fraction
-    of the domain (see phase_bce_with_logits_loss).
-    """
-    target_phase = (target_sdf > 0).to(pred_sdf.dtype)
-    pos_weight = torch.tensor(vapor_weight, device=target_sdf.device)
-    return torch.nn.functional.binary_cross_entropy_with_logits(
-        pred_sdf, target_phase, pos_weight=pos_weight
-    )
-
-
 def phase_bce_with_logits_loss(
     input_phase, 
     target_phase, 

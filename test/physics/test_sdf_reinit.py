@@ -77,3 +77,18 @@ def test_sussman_holds_contact_angle_at_heater_wall():
     error_replicated = (replicated - plane)[by_heater].abs().max()
     assert error_with_angle < 1e-3 * dx
     assert error_replicated > 10 * error_with_angle
+
+
+def test_sussman_only_redistances_cells_within_the_reinit_band():
+    phi_true, dx = make_circle_sdf()
+    # a level set twice as steep as a distance, so every cell is redistanced
+    steep = 2 * phi_true
+    reinit_band = 4 * dx
+    banded = sdf_reinit_sussman(steep, dx=dx, n_iter=20, reinit_band=reinit_band)
+    full = sdf_reinit_sussman(steep, dx=dx, n_iter=20)
+    outside = steep.abs() >= reinit_band
+    torch.testing.assert_close(banded[outside], steep[outside])
+    # the cells the band's edge is too far to reach match the full redistancing
+    deep_inside = steep.abs() < reinit_band - 2 * dx
+    torch.testing.assert_close(banded[deep_inside], full[deep_inside])
+    assert not torch.allclose(banded[~outside], steep[~outside])
