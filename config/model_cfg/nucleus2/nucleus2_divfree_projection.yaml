@@ -1,4 +1,4 @@
-name: nucleus2_moe_divfree
+name: nucleus2_moe_divfree_projection
 params:
   patch_size: 4
   embed_dim: 512

@@ -5,11 +5,11 @@ from boiling_data.bubbleml import read_bubbleml
 from boiling_data.flashx.batch import simulation_from_batch
 
 from nucleus.models import get_model
-from nucleus.models.nucleus2_moe_divfree import Nucleus2MoEDivFree
+from nucleus.models.nucleus2_moe_divfree_projection import Nucleus2MoEDivFreeProjection
 from nucleus.rollout import RolloutSettings, rollout, rollout_case, save_rollout
 from nucleus.testing.flashx import flashx_normalizer, random_batch
 
-FIELD_NAMES = Nucleus2MoEDivFree.field_names
+FIELD_NAMES = Nucleus2MoEDivFreeProjection.field_names
 
 
 class _NextFrameCounter(torch.nn.Module):
@@ -46,9 +46,9 @@ def test_rollout_checks_its_settings():
 @pytest.fixture
 def model():
     torch.manual_seed(0)
-    normalizer = flashx_normalizer(FIELD_NAMES, vector_fields=Nucleus2MoEDivFree.vector_fields)
+    normalizer = flashx_normalizer(FIELD_NAMES, vector_fields=Nucleus2MoEDivFreeProjection.vector_fields)
     return get_model(
-        "nucleus2_moe_divfree", normalizer, patch_size=4, embed_dim=64, num_heads=2, processor_blocks=1,
+        "nucleus2_moe_divfree_projection", normalizer, patch_size=4, embed_dim=64, num_heads=2, processor_blocks=1,
         num_experts=2, topk=1, moe_intermediate_dim=32, patching="Linear",
     ).eval()
 
@@ -56,7 +56,7 @@ def model():
 @pytest.fixture
 def case_path(tmp_path):
     """A BubbleML case of six frames, half a time unit apart."""
-    batch = random_batch(FIELD_NAMES, Nucleus2MoEDivFree.config_keys, batch_size=1, timesteps=6)
+    batch = random_batch(FIELD_NAMES, Nucleus2MoEDivFreeProjection.config_keys, batch_size=1, timesteps=6)
     return simulation_from_batch(batch, 0.5 * np.arange(6)).to_bubbleml(tmp_path / "case.hdf5")
 
 

@@ -11,7 +11,7 @@ from boiling_data.tasks.forecast.flashx_augmentation import (
 )
 from boiling_data.tasks.forecast.flashx_batch import FlashXForecastBatch
 
-from nucleus.models.nucleus2_moe_divfree import Nucleus2MoEDivFree, Nucleus2MoEDivFreeOutput
+from nucleus.models.nucleus2_moe_divfree_projection import Nucleus2MoEDivFreeProjection, Nucleus2MoEDivFreeProjectionOutput
 from nucleus.physics.coordinates import CellCenteredGrid
 from nucleus.physics.poisson import divergence_centers_from_faces
 from nucleus.training.loop import Metrics, StepOutput
@@ -21,7 +21,7 @@ from nucleus.training.push_forward import push_forward, sample_num_unrolls
 
 
 @dataclass(frozen=True)
-class Nucleus2MoEDivFreeTrainingSettings:
+class Nucleus2MoEDivFreeProjectionTrainingSettings:
     target_timesteps: int
     load_balance_loss_weight: float = 1e-5
     z_loss_weight: float = 1e-5
@@ -40,14 +40,14 @@ def target_div_source(target: FlashXBatch, grid: CellCenteredGrid) -> torch.Tens
     return divergence_centers_from_faces(target.fields["velfacex"], target.fields["velfacey"], grid.dx, grid.dy)
 
 
-class Nucleus2MoEDivFreeTraining(nn.Module):
-    """Trains a Nucleus2MoEDivFree on raw FlashXForecastBatches: flips the raw batch,
+class Nucleus2MoEDivFreeProjectionTraining(nn.Module):
+    """Trains a Nucleus2MoEDivFreeProjection on raw FlashXForecastBatches: flips the raw batch,
     normalizes it, adds noise to the normalized input, optionally pushes the input
     forward through the model, then takes the L1 loss over every predicted field and
     the divergence source, and the router loss. The predicted face velocities are
     the network's own unless the model's config sets use_div_projection."""
 
-    def __init__(self, model: Nucleus2MoEDivFree, settings: Nucleus2MoEDivFreeTrainingSettings):
+    def __init__(self, model: Nucleus2MoEDivFreeProjection, settings: Nucleus2MoEDivFreeProjectionTrainingSettings):
         super().__init__()
         self.model = model
         self.settings = settings
@@ -98,7 +98,7 @@ class Nucleus2MoEDivFreeTraining(nn.Module):
         return self.model(window).prediction.tail_time_window(self.settings.target_timesteps)
 
     def _prediction_target_pairs(
-        self, output: Nucleus2MoEDivFreeOutput, target: FlashXBatch
+        self, output: Nucleus2MoEDivFreeProjectionOutput, target: FlashXBatch
     ) -> Dict[str, Tuple[torch.Tensor, torch.Tensor]]:
         prediction = output.prediction.tail_time_window(target.num_timesteps)
         window = slice(-target.num_timesteps, None)

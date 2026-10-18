@@ -2,7 +2,7 @@ from hydra import initialize, compose
 from omegaconf import OmegaConf
 import pytest
 
-TRAIN_CONFIGS = ["train_nucleus2_moe", "train_nucleus2_moe_divfree"]
+TRAIN_CONFIGS = ["train_nucleus2_moe", "train_nucleus2_moe_divfree_projection"]
 
 
 @pytest.mark.parametrize("config_name", TRAIN_CONFIGS)
@@ -35,5 +35,5 @@ def test_the_statistics_live_in_the_split_directory(config_name):
 def test_rollouts_take_the_runtime_options_of_a_model_config():
     with initialize(version_base=None, config_path="../../config"):
         cfg = compose(config_name="rollout", overrides=["model_cfg.params.use_div_projection=true"])
-    assert cfg.model_cfg.name == "nucleus2_moe_divfree"
+    assert cfg.model_cfg.name == "nucleus2_moe_divfree_projection"
     assert cfg.model_cfg.params.use_div_projection is True

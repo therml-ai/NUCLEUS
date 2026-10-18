@@ -1,32 +1,13 @@
-import dataclasses
 from dataclasses import dataclass
 import torch
 import torch.nn as nn
 from torch.profiler import record_function
-from rotary_embedding_torch import RotaryEmbedding
-from typing import List, Literal, Optional, Tuple
+from typing import Optional, Tuple
 from boiling_data.flashx.batch import FlashXBatch, unstack_field_cells
 from boiling_data.flashx.normalizer import NormalizerWrapper
 
-from nucleus.layers.adaptive_layernorm import AdaptiveLayerNorm
-from nucleus.layers.attention import NeighborhoodAttention
-from nucleus.layers.moe.topk_moe import TopkMoE, TopkMoEOutput, TopkRouterWithBias
-from nucleus.layers.droppath import DropPath
-from nucleus.layers.cast import CastRMSNorm
-from nucleus.layers import (
-    AdaptiveEmbed,
-    AdaptiveDebed,
-    LinearEmbed,
-    LinearDebed,
-)
-from nucleus.models.flashx_io import (
-    NUCLEUS2_CONFIG_KEYS,
-    num_config_columns,
-    next_frames,
-    require_normalized,
-    restored_config,
-    unnormalized_prediction,
-)
+from nucleus.models.flashx_io import require_normalized
+from nucleus.models.nucleus2_moe_base import Nucleus2MoEBase, Nucleus2MoEBaseConfig, config_from_dict, patch_debed
 from nucleus.physics.coordinates import CellCenteredGrid, cell_centered_grid
 from nucleus.physics.div_projection import div_projection
 from nucleus.physics.velocity_boundaries import (
@@ -42,9 +23,9 @@ from nucleus.physics.ansatz import temperature_ansatz
 from ._api import register_model
 
 __all__ = [
-    "Nucleus2MoEDivFree",
-    "Nucleus2MoEDivFreeConfig",
-    "Nucleus2MoEDivFreeOutput",
+    "Nucleus2MoEDivFreeProjection",
+    "Nucleus2MoEDivFreeProjectionConfig",
+    "Nucleus2MoEDivFreeProjectionOutput",
     "DivFreePhysics",
 ]
 
@@ -57,32 +38,9 @@ NUM_INPUT_CHANNELS = 6
 NUM_OUTPUT_CHANNELS = NUM_INPUT_CHANNELS + 1
 
 
-_DTYPE_TO_STR: dict[torch.dtype, str] = {
-    torch.float32: "float32",
-    torch.float16: "float16",
-    torch.bfloat16: "bfloat16",
-}
-_STR_TO_DTYPE: dict[str, torch.dtype] = {v: k for k, v in _DTYPE_TO_STR.items()}
-
-
-NUCLEUS_DTYPE = Literal["float32", "float16", "bfloat16"]
-
 
 @dataclass
-class Nucleus2MoEDivFreeConfig:
-    patch_size: int
-    embed_dim: int
-    num_heads: int
-    processor_blocks: int
-    num_experts: int
-    topk: int
-    moe_intermediate_dim: int
-    patching: Literal["Linear", "Adaptive"]
-    embed_dtype: NUCLEUS_DTYPE = "float32"
-    debed_dtype: NUCLEUS_DTYPE = "float32"
-    activation_dtype: NUCLEUS_DTYPE = "float32"
-    attention_dtype: NUCLEUS_DTYPE = "bfloat16"
-    moe_dtype: NUCLEUS_DTYPE = "bfloat16"
+class Nucleus2MoEDivFreeProjectionConfig(Nucleus2MoEBaseConfig):
     # the temperature is the network's, held at saturation on the interface and at
     # the heater temperature on the heater; otherwise the network predicts it alone.
     # It sets what the network learns, so unlike the options below it is fixed at init.
@@ -104,8 +62,8 @@ class Nucleus2MoEDivFreeConfig:
 
 
 @dataclass
-class Nucleus2MoEDivFreeOutput:
-    """Prediction of :class:`Nucleus2MoEDivFree`. ``prediction`` holds dfun,
+class Nucleus2MoEDivFreeProjectionOutput:
+    """Prediction of :class:`Nucleus2MoEDivFreeProjection`. ``prediction`` holds dfun,
     temperature, velfacex and velfacey on their natural grids, its velocities
     velx_div_proj and vely_div_proj with use_div_projection and nn_velx_df and
     nn_vely_df otherwise. velx_div_proj and vely_div_proj are the network's face
@@ -230,84 +188,10 @@ def with_velocity_boundaries(velfacex, velfacey, physics: "DivFreePhysics"):
     return torch.cat([x for x, _ in samples]), torch.cat([y for _, y in samples])
 
 
-def _config_to_dict(config: Nucleus2MoEDivFreeConfig) -> dict:
-    d = dataclasses.asdict(config)
-    dtype_fields = {"embed_dtype", "debed_dtype", "activation_dtype", "attention_dtype", "moe_dtype"}
-    for key in dtype_fields:
-        if not isinstance(d[key], str):
-            d[key] = _DTYPE_TO_STR[d[key]]
-    return d
-
-
-def _config_from_dict(d: dict) -> Nucleus2MoEDivFreeConfig:
-    d = dict(d)
+def _config_from_dict(config_dict: dict) -> Nucleus2MoEDivFreeProjectionConfig:
     # checkpoints saved before the option existed were trained with the ansatz
-    d.setdefault("use_temperature_ansatz", True)
-    dtype_fields = {"embed_dtype", "debed_dtype", "activation_dtype", "attention_dtype", "moe_dtype"}
-    for key in dtype_fields:
-        if not isinstance(d[key], torch.dtype):
-            d[key] = _STR_TO_DTYPE[d[key]]
-    return Nucleus2MoEDivFreeConfig(**d)
+    return config_from_dict(Nucleus2MoEDivFreeProjectionConfig, {"use_temperature_ansatz": True, **config_dict})
 
-def get_dtype(dtype):
-    if isinstance(dtype, str):
-        return _STR_TO_DTYPE[dtype]
-    return dtype
-
-
-class TransformerMoEBlock(nn.Module):
-    def __init__(self, config: Nucleus2MoEDivFreeConfig, num_sim_params: int, drop_path_prob: float):
-        super().__init__()
-
-        self.activation_dtype = get_dtype(config.activation_dtype)
-        self.attention_dtype = get_dtype(config.attention_dtype)
-        self.moe_dtype = get_dtype(config.moe_dtype)
-
-        self.drop_path = DropPath(drop_path_prob)
-
-        self.attention_norm = AdaptiveLayerNorm(config.embed_dim, num_sim_params, dtype=self.attention_dtype)
-        self.mlp_norm = AdaptiveLayerNorm(config.embed_dim, num_sim_params, self.moe_dtype)
-
-        self.router = TopkRouterWithBias(
-            config.num_experts,
-            config.embed_dim,
-            config.topk,
-            bias_update_rate=0.001,
-            softmax_first=False
-        )
-
-        self.attention = NeighborhoodAttention(embed_dim=config.embed_dim, num_heads=config.num_heads)
-
-        self.mlp = TopkMoE(
-            num_experts=config.num_experts,
-            hidden_dim=config.embed_dim,
-            intermediate_dim=config.moe_intermediate_dim,
-            topk=config.topk,
-            router=self.router
-        )
-
-    def _attention(self, x: torch.Tensor, freqs: torch.Tensor, sim_params: torch.Tensor) -> torch.Tensor:
-        with record_function("attention"):
-            h = x.to(self.attention_dtype)
-            h = self.attention_norm(h, sim_params)
-            h = self.attention(h, freqs)
-            h = self.drop_path(h)
-            x = x + h.to(self.activation_dtype)
-        return x
-
-    def _mlp(self, x: torch.Tensor, sim_params: torch.Tensor):
-        with record_function("moe"):
-            h = x.to(self.moe_dtype)
-            h = self.mlp_norm(h, sim_params)
-            moe_output: TopkMoEOutput = self.mlp(h)
-            h = self.drop_path(moe_output.out)
-            x = x + h.to(self.activation_dtype)
-        return x, moe_output
-
-    def forward(self, x: torch.Tensor, freqs: torch.Tensor, sim_params: torch.Tensor):
-        x = self._attention(x, freqs, sim_params)
-        x, moe_output = self._mlp(x, sim_params)
-        return x, moe_output
 
 class ChannelsLastConv2d(nn.Module):
     """Conv2d over the trailing spatial dims of a channels-last (B, T, H, W, C)
@@ -327,79 +211,21 @@ class ChannelsLastConv2d(nn.Module):
         x = x.reshape(batch, time, out_channels, out_height, out_width)
         return x.permute(0, 1, 3, 4, 2).contiguous()
 
-@register_model("nucleus2_moe_divfree")
-class Nucleus2MoEDivFree(nn.Module):
-    config_class = Nucleus2MoEDivFreeConfig
+@register_model("nucleus2_moe_divfree_projection")
+class Nucleus2MoEDivFreeProjection(Nucleus2MoEBase):
+    config_class = Nucleus2MoEDivFreeProjectionConfig
     config_from_dict = staticmethod(_config_from_dict)
-    config_keys = NUCLEUS2_CONFIG_KEYS
     field_names = FIELD_NAMES
     # one shared scale and no offset, so the divergence, the projection and the
     # Poisson solve, all linear, commute with normalization
     vector_fields = (("velfacex", "velfacey"),)
-    # config fields that set how the model is run rather than what it learned
     runtime_options = (
         "use_sdf_reinit", "use_div_projection", "use_div_gate", "use_mass_transfer", "use_velocity_boundaries",
     )
-    num_sim_params = num_config_columns(NUCLEUS2_CONFIG_KEYS)
 
-    def __init__(self, config: Nucleus2MoEDivFreeConfig, normalizer: NormalizerWrapper):
-        super().__init__()
-        self.config = config
-        self.normalizer = normalizer
-        n_fields = NUM_INPUT_CHANNELS
-
-        self.embed_dtype = get_dtype(config.embed_dtype)
-        self.debed_dtype = get_dtype(config.debed_dtype)
-
-        self.rotary_emb = RotaryEmbedding(
-            dim=(config.embed_dim // config.num_heads) // 3,
-            freqs_for="pixel",
-            max_freq=256,
-            seq_before_head_dim=True
-        )
-
-        drop_path_probs = torch.linspace(0.0, 0.1, config.processor_blocks)
-        self.blocks = nn.ModuleList([
-            TransformerMoEBlock(
-                config=config,
-                num_sim_params=self.num_sim_params,
-                drop_path_prob=drop_path_probs[idx].item(),
-            )
-            for idx in range(config.processor_blocks)
-        ])
-
-        self.out_norm = CastRMSNorm(config.embed_dim)
-
-        assert config.patching in ("Linear", "Adaptive")
-        if config.patching == "Linear":
-            self.embed = LinearEmbed(
-                patch_size=config.patch_size,
-                in_channels=n_fields,
-                embed_dim=config.embed_dim
-            )
-            self.debed = LinearDebed(
-                patch_size=config.patch_size,
-                embed_dim=config.embed_dim,
-                out_channels=NUM_OUTPUT_CHANNELS
-            )
-        else:
-            self.embed = AdaptiveEmbed(
-                in_channels=n_fields,
-                out_channels=config.embed_dim,
-                out_shape=(16, 16)
-            )
-            self.debed = AdaptiveDebed(
-                in_channels=config.embed_dim,
-                out_channels=NUM_OUTPUT_CHANNELS,
-                patch_shape=(16, 16)
-            )
-
-    def get_extra_state(self):
-        return {"model_name": getattr(self, "_model_name", None), "config": _config_to_dict(self.config)}
-
-    def set_extra_state(self, state):
-        self._model_name = state.get("model_name")
-        self.config = restored_config(self.config, _config_from_dict(state["config"]), self.runtime_options)
+    def __init__(self, config: Nucleus2MoEDivFreeProjectionConfig, normalizer: NormalizerWrapper):
+        super().__init__(config, normalizer, in_channels=NUM_INPUT_CHANNELS)
+        self.debed = patch_debed(config, out_channels=NUM_OUTPUT_CHANNELS)
 
     def forward(
         self,
@@ -409,7 +235,7 @@ class Nucleus2MoEDivFree(nn.Module):
         use_div_gate: Optional[bool] = None,
         use_mass_transfer: Optional[bool] = None,
         use_velocity_boundaries: Optional[bool] = None,
-    ) -> Nucleus2MoEDivFreeOutput:
+    ) -> Nucleus2MoEDivFreeProjectionOutput:
         """batch: normalized, holding field_names and a config tensor of config_keys.
         A physics option left as None takes its value from the model's config."""
         require_normalized(batch)
@@ -483,7 +309,7 @@ class Nucleus2MoEDivFree(nn.Module):
             "velfacex": velfacex.to(torch.float32),
             "velfacey": velfacey.to(torch.float32),
         })
-        return Nucleus2MoEDivFreeOutput(
+        return Nucleus2MoEDivFreeProjectionOutput(
             prediction=prediction,
             nn_velx_df=nn_velx_df.to(torch.float32),
             nn_vely_df=nn_vely_df.to(torch.float32),
@@ -494,14 +320,6 @@ class Nucleus2MoEDivFree(nn.Module):
             moe_outputs=moe_outputs,
             grid=grid,
         )
-
-    @torch.no_grad()
-    def predict_next(self, window: FlashXBatch, num_timesteps: int, target_timesteps: int) -> FlashXBatch:
-        """The num_timesteps frames that follow a raw (unnormalized) window, raw, with
-        the projected velocities when the config's use_div_projection is set. The
-        model was trained to predict target_timesteps frames after its input."""
-        prediction = self(self.normalizer.normalize(window)).prediction
-        return unnormalized_prediction(self.normalizer, window, next_frames(prediction, num_timesteps, target_timesteps))
 
     def _option(self, value: Optional[bool], name: str) -> bool:
         return getattr(self.config, name) if value is None else value
@@ -546,28 +364,8 @@ class Nucleus2MoEDivFree(nn.Module):
         field_names. Returns the ``(B, T, H, W, 7)`` network output, which is sdf,
         temperature, each cell's top, bottom, left and right face velocities, and the
         divergence source, then the MoE outputs."""
-        assert cells.dtype == torch.float32, f"expected float32, got {cells.dtype}"
-
         _, _, h, w, _ = cells.shape
-
-        with record_function("encode"):
-            x = embed = self.embed(cells.to(self.embed_dtype))
-
-        x = x.to(get_dtype(self.config.activation_dtype))
-
-        with record_function("get_axial_freqs"):
-            with torch.no_grad():
-                _, embed_t, embed_h, embed_w, _ = embed.shape
-                rotary_freqs = self.rotary_emb.get_axial_freqs(embed_t, embed_h, embed_w)[None, :, :, :, None, :]
-
-        moe_outputs = []
-        for idx, blk in enumerate(self.blocks):
-            with record_function(f"block_{idx}"):
-                x, moe_output = blk(x, rotary_freqs, sim_params)
-                moe_outputs.append(moe_output)
-
+        x, moe_outputs = self.process(cells, sim_params)
         with record_function("debed"):
-            x = self.out_norm(x.to(self.debed_dtype) + embed.to(self.debed_dtype))
             x = self.debed(x, target_shape=(h, w))
-
         return x, moe_outputs

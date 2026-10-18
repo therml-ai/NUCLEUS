@@ -12,7 +12,7 @@ from hydra import compose, initialize_config_dir
 from nucleus.training.run import run_training
 
 CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
-MODELS = ("nucleus2_moe", "nucleus2_moe_divfree")
+MODELS = ("nucleus2_moe", "nucleus2_moe_divfree_projection")
 # small enough to run on a CPU; a head of 32 channels is the smallest neighborhood
 # attention takes, and the patch size is left to the config, as it must divide the grid
 SMALL_MODEL = [

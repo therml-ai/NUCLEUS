@@ -8,6 +8,8 @@ from boiling_data.flashx.normalizer import NormalizerWrapper
 
 M = TypeVar("M", bound=nn.Module)
 MODELS = {}
+# checkpoints name the model they were saved from, so a renamed model keeps loading
+RENAMED_MODELS = {"nucleus2_moe_divfree": "nucleus2_moe_divfree_projection"}
 
 
 def register_model(name: Optional[str] = None) -> Callable[[Callable[..., M]], Callable[..., M]]:
@@ -25,7 +27,7 @@ def list_models() -> List[str]:
 
 
 def get_model_class(name: str) -> type:
-    name = name.lower()
+    name = _current_name(name)
     if name not in MODELS:
         raise KeyError(f"Model {name} not found. Available Models: {list_models()}")
     return MODELS[name]
@@ -51,10 +53,16 @@ def load_model(path: Union[str, Path], map_location=None) -> nn.Module:
     placeholder = NormalizerWrapper({"fields": {}, "config": {}})
     model = _build(extra["model_name"], model_class.config_from_dict(extra["config"]), placeholder)
     model.load_state_dict(model_state)
+    # loading restores the name the checkpoint was saved under, which may be an old one
+    model._model_name = _current_name(extra["model_name"])
     return model
 
 
 def _build(name: str, config, normalizer: NormalizerWrapper) -> nn.Module:
     model = get_model_class(name)(config, normalizer)
-    model._model_name = name
+    model._model_name = _current_name(name)
     return model
+
+
+def _current_name(name: str) -> str:
+    return RENAMED_MODELS.get(name.lower(), name.lower())

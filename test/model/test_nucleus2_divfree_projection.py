@@ -3,14 +3,14 @@ import torch
 from boiling_data.flashx.batch import FlashXBatch
 from boiling_data.flashx.normalizer import NormalizerWrapper
 
-from nucleus.models import get_model
+from nucleus.models import get_model, load_model
 from nucleus.models.flashx_io import set_runtime_options
-from nucleus.models.nucleus2_moe_divfree import Nucleus2MoEDivFree, divfree_physics, heater_mask
+from nucleus.models.nucleus2_moe_divfree_projection import Nucleus2MoEDivFreeProjection, divfree_physics, heater_mask
 from nucleus.physics.poisson import divergence_centers_from_faces
 from nucleus.testing.flashx import flashx_config, flashx_statistics, random_batch
 from nucleus.testing.reference_attention import reference_natten
 
-FIELD_NAMES = Nucleus2MoEDivFree.field_names
+FIELD_NAMES = Nucleus2MoEDivFreeProjection.field_names
 SMALL_MODEL = dict(
     patch_size=4, embed_dim=64, num_heads=2, processor_blocks=2,
     num_experts=4, topk=2, moe_intermediate_dim=64, patching="Linear",
@@ -19,16 +19,16 @@ SMALL_MODEL = dict(
 INTERIOR = (slice(None), slice(None), slice(None, -1), slice(None))
 
 
-def _model(statistics=None, **config) -> Nucleus2MoEDivFree:
+def _model(statistics=None, **config) -> Nucleus2MoEDivFreeProjection:
     torch.manual_seed(0)
     normalizer = NormalizerWrapper(
-        statistics or flashx_statistics(FIELD_NAMES), vector_fields=Nucleus2MoEDivFree.vector_fields
+        statistics or flashx_statistics(FIELD_NAMES), vector_fields=Nucleus2MoEDivFreeProjection.vector_fields
     )
-    return get_model("nucleus2_moe_divfree", normalizer, **SMALL_MODEL, **config)
+    return get_model("nucleus2_moe_divfree_projection", normalizer, **SMALL_MODEL, **config)
 
 
 @pytest.fixture
-def model() -> Nucleus2MoEDivFree:
+def model() -> Nucleus2MoEDivFreeProjection:
     return _model()
 
 
@@ -322,4 +322,13 @@ def test_an_unknown_boundary_type_is_rejected(model):
 def test_checkpoints_from_before_the_option_keep_the_temperature_ansatz():
     config = _model().get_extra_state()["config"]
     del config["use_temperature_ansatz"]
-    assert Nucleus2MoEDivFree.config_from_dict(config).use_temperature_ansatz
+    assert Nucleus2MoEDivFreeProjection.config_from_dict(config).use_temperature_ansatz
+
+
+def test_a_checkpoint_saved_under_the_old_model_name_loads(model, tmp_path):
+    state = model.state_dict()
+    state["_extra_state"] = {**state["_extra_state"], "model_name": "nucleus2_moe_divfree"}
+    torch.save({"model": state}, tmp_path / "checkpoint.pt")
+    loaded = load_model(tmp_path / "checkpoint.pt")
+    assert isinstance(loaded, Nucleus2MoEDivFreeProjection)
+    assert loaded.get_extra_state()["model_name"] == "nucleus2_moe_divfree_projection"
