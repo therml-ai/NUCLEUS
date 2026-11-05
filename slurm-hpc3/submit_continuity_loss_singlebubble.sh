@@ -33,10 +33,10 @@ python scripts/train/train_nucleus2_moe_continuity_loss.py \
     model_cfg.params.embed_dim=512 \
     model_cfg.params.num_experts=6 \
     model_cfg.params.moe_intermediate_dim=2048 \
-    model_cfg.params.patch_size=4 \
+    model_cfg.params.patch_size=16 \
     model_cfg.params.patching="Linear" \
     model_cfg.params.activation_dtype="bfloat16" \
-    data.batch_size=16 \
+    data.batch_size=8 \
     data.in_memory=true \
     loop.accumulate_grad_batches=1 \
     loop.max_steps=20000 \
