@@ -21,7 +21,7 @@ uv sync --no-cache --active --extra cu130
 uv pip install -e .
 
 # Set your wandb API key here before submitting
-export WANDB_API_KEY=  # TODO: paste your wandb API key
+export WANDB_API_KEY=  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
 
 # a directory made by boiling-data's scripts/split_dataset.py, holding the
 # statistics.json that its scripts/bubbleml_statistics.py wrote for the train cases
