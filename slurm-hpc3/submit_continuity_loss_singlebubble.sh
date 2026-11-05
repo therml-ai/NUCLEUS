@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH -A amowli_lab_gpu
-#SBATCH -p gpu
+#SBATCH -A shrujans
+#SBATCH -p free-gpu
 #SBATCH --job-name=train-nucleus-continuity-loss
 #SBATCH -o slurm-%x-%j.out
 #SBATCH --nodes=1

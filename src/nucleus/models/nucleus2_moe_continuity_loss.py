@@ -7,9 +7,10 @@ from nucleus.models.nucleus2_moe_base import Nucleus2MoEBase, Nucleus2MoEBaseCon
 
 from ._api import register_model
 
-__all__ = ["Nucleus2MoEStaggered", "Nucleus2MoEStaggeredConfig"]
+__all__ = ["Nucleus2MoEContinuityLoss", "Nucleus2MoEContinuityLossConfig"]
 
 Nucleus2MoEStaggeredConfig = Nucleus2MoEBaseConfig
+Nucleus2MoEContinuityLossConfig = Nucleus2MoEBaseConfig
 
 
 def _config_from_dict(config_dict: dict) -> Nucleus2MoEStaggeredConfig:
