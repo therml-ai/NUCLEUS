@@ -2,7 +2,7 @@ from hydra import initialize, compose
 from omegaconf import OmegaConf
 import pytest
 
-TRAIN_CONFIGS = ["train_nucleus2_moe", "train_nucleus2_moe_divfree_projection", "train_nucleus2_moe_staggered"]
+TRAIN_CONFIGS = ["train_nucleus2_moe", "train_nucleus2_moe_divfree_projection", "train_nucleus2_moe_staggered", "train_nucleus2_moe_continuity_loss"]
 
 
 @pytest.mark.parametrize("config_name", TRAIN_CONFIGS)

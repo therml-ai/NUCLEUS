@@ -3,7 +3,7 @@ from nucleus.models import get_model_class, list_models
 
 
 def test_list_models():
-    assert list_models() == ["nucleus2_moe", "nucleus2_moe_divfree_curl", "nucleus2_moe_divfree_projection", "nucleus2_moe_staggered"]
+    assert list_models() == ["nucleus2_moe", "nucleus2_moe_continuity_loss", "nucleus2_moe_divfree_curl", "nucleus2_moe_divfree_projection", "nucleus2_moe_staggered"]
 
 
 def test_get_model():
