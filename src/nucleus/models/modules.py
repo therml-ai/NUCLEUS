@@ -506,5 +506,9 @@ def get_train_module(module_name: str):
         # it at module top would be a circular import.
         from nucleus.models.nucleus2_moe_divfree import DivFreeForecastModule
         return DivFreeForecastModule
+    elif module_name == "staggered_forecast":
+        # Lazy for the same reason as divfree_forecast.
+        from nucleus.models.nucleus2_moe_staggered import StaggeredForecastModule
+        return StaggeredForecastModule
     else:
         raise ValueError(f"Module {module_name} not supported")

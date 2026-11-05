@@ -2,6 +2,7 @@ from .nucleus1_moe import Nucleus1ViTMoE, Nucleus1AxialMoE, Nucleus1NeighborMoE,
 from .nucleus1_vit import Nucleus1ViT, Nucleus1AxialViT, Nucleus1NeighborViT, Nucleus1ViTConfig
 from .nucleus2_moe import Nucleus2MoE, Nucleus2MoEConfig
 from .nucleus2_moe_divfree import Nucleus2MoEDivFree, Nucleus2MoEDivFreeConfig
+from .nucleus2_moe_staggered import Nucleus2MoEStaggered, Nucleus2MoEStaggeredConfig
 from .nucleus2_moe_phase import Nucleus2MoEPhase
 from .unets import ModernUnet, ClassicUnet
 from .bubbleformer_vit import BubbleformerViT, BubbleformerFilmViT

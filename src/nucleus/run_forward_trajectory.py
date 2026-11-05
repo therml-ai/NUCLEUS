@@ -31,14 +31,16 @@ def _truncate_trajectory(trajectory: Trajectory, num_steps: int) -> Trajectory:
 
 def run_test(cfg, model, normalizer, test_file_path: str, trajectory_steps: int):
     is_divfree = isinstance(model, Nucleus2MoEDivFree)
+    # Models on the natural (staggered) grids: divfree, and the data-only staggered baseline.
+    is_staggered = is_divfree or getattr(model, "staggered_io", False)
     with h5py.File(test_file_path, "r") as handle:
         sdf = torch.from_numpy(handle["dfun"][:])
         temp = torch.from_numpy(handle["temperature"][:])
         velx = torch.from_numpy(handle["velx"][:])
         vely = torch.from_numpy(handle["vely"][:])
         gt_trajectory = torch.stack((sdf, temp, velx, vely), dim=-1)
-        if is_divfree:
-            # The divfree model consumes the true staggered face velocities.
+        if is_staggered:
+            # Staggered models consume the true staggered face velocities.
             velfacex = torch.from_numpy(handle["velfacex"][:])
             velfacey = torch.from_numpy(handle["velfacey"][:])
 
@@ -50,7 +52,7 @@ def run_test(cfg, model, normalizer, test_file_path: str, trajectory_steps: int)
     window = slice(cfg.start_time, cfg.start_time + cfg.history_time_window)
 
     with torch.inference_mode():
-        if is_divfree:
+        if is_staggered:
             # Build the input Trajectory directly on the natural grids: sdf/temp
             # cell-centered, velx/vely on the staggered faces read from the file.
             initial_trajectory = Trajectory(
@@ -70,10 +72,8 @@ def run_test(cfg, model, normalizer, test_file_path: str, trajectory_steps: int)
                 input_time_window_size=8,
                 output_time_window_size=8,
                 trajectory_steps=trajectory_steps,
-                use_sdf_reinit=False,
                 clip_temp=False,
-                use_leray=True,
-                use_div_gate=True,
+                **(dict(use_sdf_reinit=False, use_leray=True, use_div_gate=True) if is_divfree else {}),
             )
             pred_trajectory = _truncate_trajectory(pred_trajectory, trajectory_steps)
             target_window = slice(cfg.start_time, cfg.start_time + trajectory_steps)

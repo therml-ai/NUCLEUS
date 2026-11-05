@@ -1,0 +1,20 @@
+# Data-only NUCLEUS-2 on the staggered grid: shared staggered backbone, face-velocity
+# head, L1 data loss plus router terms. Use with pydataset=in_mem_divfree_forecast and
+# normalizer_cfg=staggered_standard; with cell_centered augmentation this was the best
+# setting in a normalizer x augmentation ablation on single-bubble FC-72.
+name: nucleus2_moe_staggered
+train_module_name: staggered_forecast
+layout: "t h w c"
+params:
+  patch_size: 4
+  embed_dim: 512
+  moe_intermediate_dim: 1024
+  processor_blocks: 12
+  num_heads: 8
+  num_experts: 6
+  topk: 2
+  patching: "Linear"
+  activation_dtype: "bfloat16"
+  # Training-module setting, not a model field: "cell_centered" (shared-scale noise +
+  # FieldDropout, as the cell-centered modules) or "noise" (per-field noise). See StaggeredForecastModule.
+  augmentation: cell_centered
