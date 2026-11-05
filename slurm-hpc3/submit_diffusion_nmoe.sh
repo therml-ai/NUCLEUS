@@ -3,8 +3,9 @@
 #SBATCH -p free-gpu32
 #SBATCH --job-name=Nucleus
 #SBATCH -o slurm-%x-%j.out
-#SBATCH -e slurm-%x-%j.err
+#SBATCH -e /pub/tanishs4/NUCLEUS/slurm-%x-%j.err
 #SBATCH --nodes=1
+#SBATCH --exclude=hpc3-gpu-n54-00
 #SBATCH --cpus-per-task=12
 #SBATCH --gres=gpu:RTX6000:1
 #SBATCH --time=24:00:00
@@ -12,14 +13,9 @@
 #SBATCH --mail-type=BEGIN,END
 
 set -euo pipefail
-
-if [[ $# -lt 1 ]]; then
-    echo "Usage: sbatch $0 CHECKPOINT_PATH [Hydra overrides...]" >&2
-    exit 1
-fi
-diffusion_checkpoint_path="$1"
-diffusion_log_dir="$(dirname "$(dirname "$diffusion_checkpoint_path")")/diffusion"
-shift
+trap 'exit_code=$?; echo "Job ${SLURM_JOB_ID:-unknown} failed at line $LINENO (exit $exit_code)" >&2; exit "$exit_code"' ERR
+export HYDRA_FULL_ERROR=1
+echo "Starting job ${SLURM_JOB_ID:-unknown} on $(hostname)"
 
 cd /pub/tanishs4/NUCLEUS
 
@@ -40,19 +36,22 @@ python -c 'import torch; print("torch", torch.__version__, "cuda", torch.version
 echo "diffusion start!"
 python scripts/diffusion.py \
     model_cfg=nucleus2/nucleus2_experiment \
+    model_cfg.params.processor_blocks=8 \
+    model_cfg.params.embed_dim=512 \
+    model_cfg.params.num_experts=6 \
+    model_cfg.params.moe_intermediate_dim=1024 \
     model_cfg.params.patch_size=16 \
+    model_cfg.params.patching=Linear \
+    model_cfg.params.activation_dtype=float32 \
     data_cfg=poolboiling \
     normalizer_cfg=standard \
     pydataset=in_mem_forecast \
     data_dir=/share/crsp/lab/amowli/share/BubbleML_2/ \
-    checkpoint_path=/pub/tanishs4/bubbleformer_logs/nucleus2_moe_divfree_2026-10-13_58117670/checkpoints/last.ckpt \
+    checkpoint_path=/pub/tanishs4/nucleus2_logs/nucleus2_moe_poolboiling512_2026-10-29_58609204/checkpoints/last.ckpt \
     history_time_window=8 \
     future_time_window=8 \
     time_step=1 \
     batch_size=4 \
     max_steps=6 \
-    log_dir=/pub/tanishs4/bubbleformer_logs/nucleus2_moe_divfree_2026-10-13_58117670
-
-
-
-
+    log_dir=/pub/tanishs4/nucleus2_logs/nucleus2_moe_poolboiling512_2026-10-29_58609204 \
+    "$@"

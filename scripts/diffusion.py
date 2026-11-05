@@ -28,9 +28,12 @@ from nucleus.utils.sdf_smoothing import smooth_sdf_frames
 from nucleus.utils.physical_metrics import PhysicalMetrics, BubbleMetrics, physical_metrics, bubble_metrics
 from nucleus.test import TestResults
 from nucleus.plot.plotting import plot_rollout
-from nucleus.plot.diffusion_gif import save_diffusion_gif
+from nucleus.plot.diffusion_gif import save_diffusion_gif, save_rollout_gif
 from einops import rearrange
 from pathlib import Path
+
+
+GAUSSIAN_SIGMA_CELLS = (0.5, 1.0, 2.0, 3.0)
 
 
 def log_sdf_comparison(run, metric_prefix, variants, target, dx, dy, start_frame):
@@ -52,6 +55,10 @@ def log_sdf_comparison(run, metric_prefix, variants, target, dx, dy, start_frame
         })
     return records
 
+#scaled parameters
+#reduce std noisy
+#channel 
+#check noise implementation
 
 def predict_surrogate(model, batch, normalizer, layout: str) -> torch.Tensor:
     if getattr(model, "_model_name", None) != "nucleus2_moe_divfree":
@@ -93,7 +100,7 @@ def main(cfg: DictConfig):
         "epochs": 1000,
         "num_train_timesteps": 100,
         "num_inference_steps": 50,
-        "postprocessing_gaussian_sigma_cells": [0.5, 1.0],
+        "postprocessing_gaussian_sigma_cells": list(GAUSSIAN_SIGMA_CELLS),
     })
     with wandb.init(
         entity="hpcforge",
@@ -168,6 +175,7 @@ def run_diffusion(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
 
     scheduler = FlowMatchEulerDiscreteScheduler(num_train_timesteps=100)
 
+    #lr reduce over time
     lr = cfg.get("lr", 2.5e-4)
     lr_warmup_steps = cfg.get("lr_warmup_steps", 150)
     min_lr_ratio = cfg.get("min_lr_ratio", 0.001)  # decay down to this fraction of `lr` by max_steps
@@ -212,7 +220,8 @@ def run_diffusion(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
                 0, scheduler.config.num_train_timesteps,
                 (inp_flat.shape[0],), device=device,
             )
-            noise = torch.randn_like(tgt_flat)
+            #NOISE MOD
+            noise = 0.5*torch.randn_like(tgt_flat)
             sigma_1d = scheduler.sigmas.to(device)[timesteps]
             # unet_timesteps uses the scheduler's actual convention (sigma * num_train_timesteps),
             # the same thing `scheduler.timesteps` holds and what the inference loop feeds in --
@@ -225,7 +234,7 @@ def run_diffusion(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
                 sigmas = sigmas.unsqueeze(-1)
             noisy_tgt = (1.0 - sigmas) * tgt_flat + sigmas * noise
 
-            #predicting
+            #predicting - try concatenating by channel instead of time?
             model_input = torch.cat([inp_flat, pred_flat, noisy_tgt], dim=1)
             pred_noise = unet(model_input, unet_timesteps).sample
             loss = torch.nn.functional.mse_loss(pred_noise, noise - tgt_flat)
@@ -252,6 +261,7 @@ def run_diffusion(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
         if global_step >= cfg.max_steps:
             break
 
+    #chec
     checkpoint_dir = Path(cfg.log_dir) / "diffusion_unet"
     unet.save_pretrained(checkpoint_dir)
     run.summary["checkpoint_dir"] = str(checkpoint_dir)
@@ -320,6 +330,7 @@ def run_diffusion(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
         comparison_records = {}
         rollout_window_paths = []
         metric_prefix = f"rollout/{case_name}/{Path(test_file_path).stem}"
+        output_prefix = f"output/{case_name}_{Path(test_file_path).stem}"
 
         with torch.no_grad():
             for itr in range(0, len(test_dataset), skip_itrs):
@@ -355,7 +366,6 @@ def run_diffusion(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
                     pred_raw = predict_surrogate(model, batch, normalizer, layout)
                 pred_flat = _flatten(pred_raw)
 
-                # Start on the same Gaussian-to-data path used during training.
                 noisy = torch.randn_like(pred_flat)
                 for idx, t in enumerate(scheduler.timesteps):
                     model_input = torch.cat([inp_flat, pred_flat, noisy], dim=1)
@@ -399,16 +409,29 @@ def run_diffusion(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
                     sdf_reinit_sussman(frame, dx=dx, dy=dy)
                     for frame in baseline_sdf
                 ])
+                blurred_variants = {
+                    f"diffusion_gaussian_{str(sigma).replace('.', '_')}":
+                    smooth_sdf_frames(raw_sdf, sigma, dx, dy, reinitialize=False)
+                    for sigma in GAUSSIAN_SIGMA_CELLS
+                }
                 smoothed_variants = {
-                    "diffusion_gaussian_0_5": smooth_sdf_frames(raw_sdf, 0.5, dx, dy),
-                    "diffusion_gaussian_1_0": smooth_sdf_frames(raw_sdf, 1.0, dx, dy),
+                    name: torch.stack([
+                        sdf_reinit_sussman(frame, dx=dx, dy=dy)
+                        for frame in blurred_sdf
+                    ])
+                    for name, blurred_sdf in blurred_variants.items()
+                }
+                blur_only_variants = {
+                    f"{name}_blur_only": blurred_sdf
+                    for name, blurred_sdf in blurred_variants.items()
                 }
                 records = log_sdf_comparison(
                     run, metric_prefix,
-                    {"diffusion_raw": raw_sdf, "diffusion_reinitialized": corrected_sdf,
+                    {"ground_truth": target_sdf,
+                     "diffusion_raw": raw_sdf, "diffusion_reinitialized": corrected_sdf,
                      "surrogate": baseline_sdf,
                      "surrogate_reinitialized": baseline_reinitialized,
-                     **smoothed_variants},
+                     **smoothed_variants, **blur_only_variants},
                     target_sdf, dx, dy, itr,
                 )
                 for key, values in records.items():
@@ -433,15 +456,15 @@ def run_diffusion(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
                 max_frames=cfg.get("rollout_gif_max_frames", 120),
                 fps=cfg.get("rollout_gif_fps", 10),
             )
-            run.log({f"{metric_prefix}/comparison_gif": wandb.Video(str(gif_path), format="gif")})
-            for variant in ("diffusion_gaussian_0_5", "diffusion_gaussian_1_0"):
+            run.log({f"{output_prefix}_comparison_gif": wandb.Video(str(gif_path), format="gif")})
+            for variant in smoothed_variants:
                 gif_path = save_diffusion_gif(
                     rollout_window_paths, layout, sdf_field_index,
                     case_dir / f"{variant}.gif",
                     max_frames=cfg.get("rollout_gif_max_frames", 120),
                     fps=cfg.get("rollout_gif_fps", 10), variant=variant,
                 )
-                run.log({f"{metric_prefix}/{variant}/gif": wandb.Video(str(gif_path), format="gif")})
+                run.log({f"{output_prefix}_{variant}_gif": wandb.Video(str(gif_path), format="gif")})
         for key, values in comparison_records.items():
             metric_values = torch.tensor(values)
             run.summary[f"{key}_mean"] = metric_values.nanmean().item()
@@ -508,14 +531,31 @@ def run_diffusion(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
         case_dir = save_dir / case_name
         case_dir.mkdir(parents=True, exist_ok=True)
         print(f"Plotting rollout to {case_dir}")
-        plot_rollout(
-            save_dir=str(case_dir),
-            rollout=preds,
-            test_results=test_results,
-            step_size=5,
-            include_ground_truth=True,
-            n_jobs=1,
-        )
+        for include_ground_truth, frame_dir, gif_key in (
+            (True, case_dir, "gif"),
+            (False, case_dir / "basic_rollout", "basic_gif"),
+        ):
+            frame_dir.mkdir(parents=True, exist_ok=True)
+            plot_rollout(
+                save_dir=str(frame_dir),
+                rollout=preds,
+                test_results=test_results,
+                step_size=5,
+                include_ground_truth=include_ground_truth,
+                n_jobs=1,
+            )
+            rollout_gif_path = save_rollout_gif(
+                [frame_dir / f"rollout_{frame_index:04d}.png"
+                 for frame_index in range(0, preds.shape[1], 5)],
+                frame_dir / "rollout.gif",
+                max_frames=cfg.get("rollout_gif_max_frames", 120),
+                fps=cfg.get("rollout_gif_fps", 10),
+            )
+            run.log({
+                f"{output_prefix}_{gif_key}": wandb.Video(
+                    str(rollout_gif_path), format="gif",
+                ),
+            })
         del test_results, preds, targets, test_dataset
         gc.collect()
 

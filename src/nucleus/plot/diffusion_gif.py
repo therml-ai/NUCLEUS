@@ -9,6 +9,37 @@ from PIL import Image
 from nucleus.data.layout import convert_layout
 
 
+def save_rollout_gif(
+    frame_paths: list[Path], output_path: Path,
+    max_frames: int = 120, fps: int = 10,
+) -> Path:
+    if max_frames < 1 or fps < 1:
+        raise ValueError("GIF max_frames and fps must be positive.")
+    if not frame_paths:
+        raise ValueError("At least one rollout frame is required.")
+    sample_indices = np.linspace(
+        0, len(frame_paths) - 1, min(max_frames, len(frame_paths)), dtype=int,
+    )
+    frames = []
+    for frame_index in sample_indices:
+        with Image.open(frame_paths[frame_index]) as image:
+            frames.append(image.convert("RGB"))
+    canvas_size = (
+        max(frame.width for frame in frames),
+        max(frame.height for frame in frames),
+    )
+    padded_frames = []
+    for frame in frames:
+        canvas = Image.new("RGB", canvas_size, "white")
+        canvas.paste(frame, (0, 0))
+        padded_frames.append(canvas)
+    padded_frames[0].save(
+        output_path, save_all=True, append_images=padded_frames[1:],
+        duration=max(1, round(1000 / fps)), loop=0,
+    )
+    return output_path
+
+
 def _render_sdf_frame(fields: dict, frame_index: int, color_limit: float) -> Image.Image:
     figure = Figure(figsize=(12, 3), dpi=90)
     canvas = FigureCanvasAgg(figure)
@@ -33,9 +64,10 @@ def _window_fields(window: dict, layout: str, sdf_index: int) -> dict:
         "Diffusion raw": window["diffusion_raw_sdf"],
         "Diffusion reinitialized": convert_layout(window["preds"], "t h w c", layout)[..., sdf_index],
     }
-    for variant in ("diffusion_gaussian_0_5", "diffusion_gaussian_1_0"):
-        if variant in window:
-            fields[variant] = window[variant]
+    fields.update({
+        name: values for name, values in window.items()
+        if name.startswith("diffusion_gaussian_")
+    })
     return fields
 
 

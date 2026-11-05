@@ -5,10 +5,11 @@
 #SBATCH -o slurm-%x-%j.out
 #SBATCH -e slurm-%x-%j.err
 #SBATCH --nodes=1
+#SBATCH --exclude=hpc3-gpu-n54-00
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=24GB
 #SBATCH --gres=gpu:RTX6000:1
-#SBATCH --time=12:00:00
+#SBATCH --time=48:00:00
 #SBATCH --mail-user=tanishs4@uci.edu
 #SBATCH --mail-type=BEGIN,END
 

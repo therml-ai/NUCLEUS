@@ -5,6 +5,7 @@
 #SBATCH -o slurm-%x-%j.out
 #SBATCH -e slurm-%x-%j.err
 #SBATCH --nodes=1
+#SBATCH --exclude=hpc3-gpu-n54-00
 #SBATCH --cpus-per-task=12
 #SBATCH --gres=gpu:RTX6000:1
 #SBATCH --time=12:00:00
@@ -12,6 +13,9 @@
 #SBATCH --mail-type=BEGIN,END
 
 set -euo pipefail
+trap 'exit_code=$?; echo "Job ${SLURM_JOB_ID:-unknown} failed at line $LINENO (exit $exit_code)" >&2; exit "$exit_code"' ERR
+export HYDRA_FULL_ERROR=1
+echo "Starting job ${SLURM_JOB_ID:-unknown} on $(hostname)"
 
 # if [[ $# -lt 3 ]]; then
 #     echo "Usage: sbatch $0 CHECKPOINT_PATH DATA_DIR LOG_DIR [Hydra overrides...]" >&2
@@ -37,6 +41,7 @@ uv pip check
 python -c 'import torchvision; from diffusers import UNet2DModel; import natten; print("torchvision", torchvision.__version__, "natten", natten.__version__)'
 
 python -c 'import torch; print("torch", torch.__version__, "cuda", torch.version.cuda, "avail", torch.cuda.is_available(), torch.cuda.get_device_name(0))'
+
 
 echo "diffusion start!"
 python scripts/diffusion.py \

@@ -1,6 +1,21 @@
 import torch
+from scipy.ndimage import gaussian_filter
 
 from nucleus.utils.sdf_smoothing import smooth_sdf_frames
+
+
+def test_blur_only_matches_gaussian_without_reinitialization(monkeypatch):
+    def unexpected_reinitialization(*args, **kwargs):
+        raise AssertionError("Blur-only output must precede reinitialization")
+
+    monkeypatch.setattr(
+        "nucleus.utils.sdf_smoothing.sdf_reinit_sussman",
+        unexpected_reinitialization,
+    )
+    sdf = torch.arange(32).float().reshape(2, 4, 4)
+    actual = smooth_sdf_frames(sdf, 2.0, dx=1.0, dy=1.0, reinitialize=False)
+    expected = gaussian_filter(sdf.numpy(), sigma=(0, 2.0, 2.0), mode="reflect")
+    assert torch.allclose(actual, torch.from_numpy(expected))
 
 
 def test_smoothing_reduces_noise_without_mixing_frames_or_mutating_input():

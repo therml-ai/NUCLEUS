@@ -1,6 +1,22 @@
 import torch
 
 
+def _eikonal_metrics(
+    gradient: torch.Tensor, interface_mask: torch.Tensor,
+) -> dict[str, torch.Tensor]:
+    residual = (torch.linalg.vector_norm(gradient, dim=0) - 1).square()
+    interface_count = interface_mask.sum(dim=(-2, -1))
+    return {
+        "eikonal_loss": residual.mean(dim=(-2, -1)),
+        "interface_eikonal_loss": torch.where(
+            interface_count > 0,
+            (residual * interface_mask).sum(dim=(-2, -1))
+            / interface_count.clamp_min(1),
+            float("nan"),
+        ),
+    }
+
+
 def sdf_frame_metrics(
     prediction: torch.Tensor, target: torch.Tensor, dx: float, dy: float
 ) -> dict[str, torch.Tensor]:
@@ -22,6 +38,7 @@ def sdf_frame_metrics(
     )
     interface_error = (gradient_error * interface_mask).sum(dim=(-2, -1))
     return {
+        **_eikonal_metrics(prediction_gradient, interface_mask),
         "sdf_mae": (prediction - target).abs().mean(dim=(-2, -1)),
         "sdf_mse": (prediction - target).square().mean(dim=(-2, -1)),
         "bubble_iou": torch.where(union > 0, intersection / union.clamp_min(1), 1.0),
