@@ -1,12 +1,13 @@
 #!/bin/bash
-#SBATCH -A AMOWLI_LAB 
+#SBATCH -A AMOWLI_LAB
 #SBATCH -p free-gpu32
-#SBATCH --job-name=Nucleus
-#SBATCH -o slurm-%x-%j.out
-#SBATCH -e slurm-%x-%j.err
+#SBATCH --job-name=diff-single
+#SBATCH -o /data/homezvol1/tanishs4/diffsingle-%x-%j.out
+#SBATCH -e /data/homezvol1/tanishs4/diffsingle-%x-%j.err
 #SBATCH --nodes=1
 #SBATCH --exclude=hpc3-gpu-n54-00
 #SBATCH --cpus-per-task=12
+#SBATCH --mem=72GB
 #SBATCH --gres=gpu:RTX6000:1
 #SBATCH --time=12:00:00
 #SBATCH --mail-user=tanishs4@uci.edu

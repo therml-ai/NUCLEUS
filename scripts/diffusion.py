@@ -1,5 +1,7 @@
 import math
 import gc
+import os
+from datetime import date
 
 import torch
 import wandb
@@ -33,7 +35,7 @@ from einops import rearrange
 from pathlib import Path
 
 
-GAUSSIAN_SIGMA_CELLS = (0.5, 1.0, 2.0, 3.0)
+GAUSSIAN_SIGMA_CELLS = (0.5, 1.0)
 
 
 def log_sdf_comparison(run, metric_prefix, variants, target, dx, dy, start_frame):
@@ -115,6 +117,16 @@ def run_diffusion(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     seed_everything(cfg.seed)
 
+    # Stamp each run's outputs with dataset/date/job id so successive runs don't
+    # overwrite each other, matching the convention in scripts/train.py.
+    run_id_parts = ["diffusion", str(cfg.data_cfg.dataset).lower(), date.today().strftime("%Y-%m-%d")]
+    if os.getenv("SLURM_JOB_ID") is not None:
+        run_id_parts.append(os.getenv("SLURM_JOB_ID"))
+    run_dir = Path(cfg.log_dir) / "_".join(run_id_parts)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    print(f"writing diffusion outputs to {run_dir}", flush=True)
+    run.summary["run_dir"] = str(run_dir)
+
     normalizer = get_normalizer(OmegaConf.to_container(cfg.normalizer_cfg, resolve=True))
     layout = cfg.model_cfg.layout
     num_fields = len(cfg.data_cfg.output_fields)
@@ -168,9 +180,11 @@ def run_diffusion(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
         sample_size=None,
         in_channels=3 * window_length * num_fields,
         out_channels=window_length * num_fields,
-        block_out_channels=(64, 128, 256, 512),
+        block_out_channels=(16, 32, 64, 128),
         layers_per_block=2,
-        norm_num_groups=32,
+        # norm_num_groups must divide every entry in block_out_channels, including
+        # the first (16) -- UNet2DModel also uses it for norm_out on that width.
+        norm_num_groups=16,
     ).to(device)
 
     scheduler = FlowMatchEulerDiscreteScheduler(num_train_timesteps=100)
@@ -234,7 +248,6 @@ def run_diffusion(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
                 sigmas = sigmas.unsqueeze(-1)
             noisy_tgt = (1.0 - sigmas) * tgt_flat + sigmas * noise
 
-            #predicting - try concatenating by channel instead of time?
             model_input = torch.cat([inp_flat, pred_flat, noisy_tgt], dim=1)
             pred_noise = unet(model_input, unet_timesteps).sample
             loss = torch.nn.functional.mse_loss(pred_noise, noise - tgt_flat)
@@ -262,7 +275,7 @@ def run_diffusion(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
             break
 
     #chec
-    checkpoint_dir = Path(cfg.log_dir) / "diffusion_unet"
+    checkpoint_dir = run_dir / "diffusion_unet"
     unet.save_pretrained(checkpoint_dir)
     run.summary["checkpoint_dir"] = str(checkpoint_dir)
     run.summary["training_steps"] = global_step
@@ -289,7 +302,7 @@ def run_diffusion(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
             pretrained_rollout = data.preds.squeeze(0)
         print(f"Loaded pretrained rollout with shape {pretrained_rollout.shape}")
 
-    save_dir = Path(cfg.log_dir) / "10k_step_diffusion_rollout"
+    save_dir = run_dir / "scaled_down_reduced_noise_10k_step_diffusion_rollout"
     save_dir.mkdir(parents=True, exist_ok=True)
     sdf_absolute_error_sum = 0.0
     sdf_value_count = 0
@@ -366,7 +379,7 @@ def run_diffusion(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
                     pred_raw = predict_surrogate(model, batch, normalizer, layout)
                 pred_flat = _flatten(pred_raw)
 
-                noisy = torch.randn_like(pred_flat)
+                noisy = 0.5 * torch.randn_like(pred_flat)
                 for idx, t in enumerate(scheduler.timesteps):
                     model_input = torch.cat([inp_flat, pred_flat, noisy], dim=1)
                     pn = unet(model_input, torch.full((1,), t, device=device, dtype=torch.float32)).sample
@@ -409,21 +422,13 @@ def run_diffusion(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
                     sdf_reinit_sussman(frame, dx=dx, dy=dy)
                     for frame in baseline_sdf
                 ])
-                blurred_variants = {
-                    f"diffusion_gaussian_{str(sigma).replace('.', '_')}":
-                    smooth_sdf_frames(raw_sdf, sigma, dx, dy, reinitialize=False)
-                    for sigma in GAUSSIAN_SIGMA_CELLS
-                }
+                # Build each reinitialized variant straight from raw_sdf. Keeping the
+                # intermediate blur-only tensors alive alongside them doubled the
+                # number of full-trajectory SDF tensors held per rollout window.
                 smoothed_variants = {
-                    name: torch.stack([
-                        sdf_reinit_sussman(frame, dx=dx, dy=dy)
-                        for frame in blurred_sdf
-                    ])
-                    for name, blurred_sdf in blurred_variants.items()
-                }
-                blur_only_variants = {
-                    f"{name}_blur_only": blurred_sdf
-                    for name, blurred_sdf in blurred_variants.items()
+                    f"diffusion_gaussian_{str(sigma).replace('.', '_')}":
+                    smooth_sdf_frames(raw_sdf, sigma, dx, dy)
+                    for sigma in GAUSSIAN_SIGMA_CELLS
                 }
                 records = log_sdf_comparison(
                     run, metric_prefix,
@@ -431,7 +436,7 @@ def run_diffusion(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
                      "diffusion_raw": raw_sdf, "diffusion_reinitialized": corrected_sdf,
                      "surrogate": baseline_sdf,
                      "surrogate_reinitialized": baseline_reinitialized,
-                     **smoothed_variants, **blur_only_variants},
+                     **smoothed_variants},
                     target_sdf, dx, dy, itr,
                 )
                 for key, values in records.items():

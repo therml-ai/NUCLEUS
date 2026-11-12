@@ -1,11 +1,12 @@
 #!/bin/bash
-#SBATCH -A AMOWLI_LAB 
+#SBATCH -A AMOWLI_LAB
 #SBATCH -p free-gpu32
-#SBATCH --job-name=Nucleus
-#SBATCH -o slurm-%x-%j.out
-#SBATCH -e slurm-%x-%j.err
+#SBATCH --job-name=diffusion
+#SBATCH -o /data/homezvol1/tanishs4/slurm-%x-%j.out
+#SBATCH -e /data/homezvol1/tanishs4/slurm-%x-%j.err
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=12
+#SBATCH --cpus-per-task=6
+#SBATCH --mem=36GB
 #SBATCH --gres=gpu:RTX6000:1
 #SBATCH --time=12:00:00
 #SBATCH --mail-user=tanishs4@uci.edu
@@ -13,7 +14,13 @@
 
 set -euo pipefail
 
-cd /pub/tanishs4/NUCLEUS
+project_dir="${NUCLEUS_PROJECT_DIR:-/pub/tanishs4/NUCLEUS}"
+if [[ ! -f "$project_dir/pyproject.toml" || ! -f "$project_dir/scripts/diffusion.py" ]]; then
+    echo "NUCLEUS project not found at $project_dir. Set NUCLEUS_PROJECT_DIR to the repository root." >&2
+    exit 1
+fi
+cd "$project_dir"
+echo "Running NUCLEUS from $PWD"
 
 echo "env setup"
 uv venv "$TMPDIR/NUCLEUS"
