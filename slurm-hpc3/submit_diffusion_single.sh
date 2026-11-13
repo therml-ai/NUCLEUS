@@ -2,8 +2,8 @@
 #SBATCH -A AMOWLI_LAB
 #SBATCH -p free-gpu32
 #SBATCH --job-name=diff-single
-#SBATCH -o /data/homezvol1/tanishs4/diffsingle-%x-%j.out
-#SBATCH -e /data/homezvol1/tanishs4/diffsingle-%x-%j.err
+#SBATCH -o /data/homezvol1/tanishs4/%x-%j.out
+#SBATCH -e /data/homezvol1/tanishs4/%x-%j.err
 #SBATCH --nodes=1
 #SBATCH --exclude=hpc3-gpu-n54-00
 #SBATCH --cpus-per-task=12
@@ -63,5 +63,5 @@ python scripts/diffusion.py \
     future_time_window=8 \
     time_step=1 \
     batch_size=4 \
-    max_steps=10000 \
+    max_steps=1000 \
     log_dir=/pub/tanishs4/bubbleformer_logs/nucleus2_moe_singlebubble_2026-10-08_57936970

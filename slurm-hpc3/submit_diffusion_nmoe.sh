@@ -2,8 +2,8 @@
 #SBATCH -A amowli_lab
 #SBATCH -p free-gpu32
 #SBATCH --job-name=diff-nmoe
-#SBATCH -o /data/homezvol1/tanishs4/diffnmoe-%x-%j.out
-#SBATCH -e /data/homezvol1/tanishs4/diffnmoe-%x-%j.err
+#SBATCH -o /data/homezvol1/tanishs4/%x-%j.out
+#SBATCH -e /data/homezvol1/tanishs4/%x-%j.err
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=96GB
@@ -58,6 +58,6 @@ python scripts/diffusion.py \
     future_time_window=8 \
     time_step=1 \
     batch_size=4 \
-    max_steps=6 \
+    max_steps=100 \
     log_dir=/pub/tanishs4/nucleus2_logs/nucleus2_moe_poolboiling512_2026-10-29_58609204 \
     "$@"
