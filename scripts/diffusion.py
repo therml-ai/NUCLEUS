@@ -23,6 +23,9 @@ from nucleus.models.nucleus2_moe_divfree import (
     cells_to_y_face,
     domain_x_coords,
 )
+from nucleus.utils.preemption import (
+    PreemptionHandler, restore_training_checkpoint, save_training_checkpoint,
+)
 from nucleus.utils.set_fp32_precision import set_fp32_precision
 from nucleus.utils.sdf_reinit import sdf_reinit_sussman
 from nucleus.utils.sdf_metrics import sdf_frame_metrics
@@ -104,15 +107,18 @@ def main(cfg: DictConfig):
         "num_inference_steps": 50,
         "postprocessing_gaussian_sigma_cells": list(GAUSSIAN_SIGMA_CELLS),
     })
-    with wandb.init(
-        entity="hpcforge",
-        project="diffusion",
-        config=run_config,
-    ) as run:
-        run_diffusion(cfg, run)
+    with PreemptionHandler() as preemption:
+        with wandb.init(
+            entity="hpcforge",
+            project="diffusion",
+            config=run_config,
+        ) as run:
+            run_diffusion(cfg, run, preemption)
 
 
-def run_diffusion(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
+def run_diffusion(
+    cfg: DictConfig, run: wandb.sdk.wandb_run.Run, preemption: PreemptionHandler
+) -> None:
     set_fp32_precision()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     seed_everything(cfg.seed)
@@ -123,6 +129,14 @@ def run_diffusion(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
     if os.getenv("SLURM_JOB_ID") is not None:
         run_id_parts.append(os.getenv("SLURM_JOB_ID"))
     run_dir = Path(cfg.log_dir) / "_".join(run_id_parts)
+    checkpoint_override = cfg.get("diffusion_resume_path") or os.getenv("DIFFUSION_RESUME_PATH")
+    if checkpoint_override:
+        resume_path = Path(checkpoint_override)
+    elif os.getenv("SLURM_JOB_ID"):
+        resume_path = Path(cfg.log_dir) / f"diffusion_{os.environ['SLURM_JOB_ID']}" / "last.pt"
+    else:
+        resume_path = run_dir / "last.pt"
+    run_dir = resume_path.parent
     run_dir.mkdir(parents=True, exist_ok=True)
     print(f"writing diffusion outputs to {run_dir}", flush=True)
     run.summary["run_dir"] = str(run_dir)
@@ -184,7 +198,11 @@ def run_diffusion(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
         layers_per_block=2,
         # norm_num_groups must divide every entry in block_out_channels, including
         # the first (16) -- UNet2DModel also uses it for norm_out on that width.
-        norm_num_groups=16,
+        # Keep it at 16/8 = 2 channels per group: at 16 groups this degenerates to
+        # per-channel InstanceNorm, which zeroes each channel's spatial mean right
+        # before norm_out. For an SDF the absolute level is the signal, so that
+        # forces the output conv to re-synthesize it and shows up as speckle.
+        norm_num_groups=8,
     ).to(device)
 
     scheduler = FlowMatchEulerDiscreteScheduler(num_train_timesteps=100)
@@ -218,9 +236,22 @@ def run_diffusion(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
 
     #training
     unet.train()
-    global_step = 0
-    for epoch in range(1000):
+    global_step, start_epoch = restore_training_checkpoint(
+        resume_path, unet, optimizer, lr_scheduler
+    )
+    checkpoint_interval = int(cfg.get("diffusion_checkpoint_every", 100))
+    if checkpoint_interval < 1:
+        raise ValueError("diffusion_checkpoint_every must be positive")
+    epoch = start_epoch
+    for epoch in range(start_epoch, 1000):
+        if global_step >= cfg.max_steps:
+            break
         for batch in train_dataloader:
+            if preemption.requested:
+                save_training_checkpoint(
+                    resume_path, unet, optimizer, lr_scheduler, global_step, epoch
+                )
+                raise SystemExit(75)
             batch = batch.to(device)
 
             tgt_flat = _flatten(batch.target)
@@ -256,6 +287,13 @@ def run_diffusion(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
             optimizer.step()
             lr_scheduler.step()
             global_step += 1
+            if preemption.requested or global_step % checkpoint_interval == 0:
+                save_training_checkpoint(
+                    resume_path, unet, optimizer, lr_scheduler, global_step, epoch
+                )
+            if preemption.requested:
+                print(f"Preemption checkpoint saved to {resume_path}", flush=True)
+                raise SystemExit(75)
 
             run.log(
                 {
@@ -274,6 +312,11 @@ def run_diffusion(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
         if global_step >= cfg.max_steps:
             break
 
+    save_training_checkpoint(
+        resume_path, unet, optimizer, lr_scheduler, global_step, epoch
+    )
+    if preemption.requested:
+        raise SystemExit(75)
     #chec
     checkpoint_dir = run_dir / "diffusion_unet"
     unet.save_pretrained(checkpoint_dir)
@@ -347,6 +390,8 @@ def run_diffusion(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
 
         with torch.no_grad():
             for itr in range(0, len(test_dataset), skip_itrs):
+                if preemption.requested:
+                    raise SystemExit(75)
                 data = test_dataset[itr]
                 batch = data.to_collated_batch().to(device)
 

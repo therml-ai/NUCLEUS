@@ -5,6 +5,8 @@
 #SBATCH -o /data/homezvol1/tanishs4/%x-%j.out
 #SBATCH -e /data/homezvol1/tanishs4/%x-%j.err
 #SBATCH --nodes=1
+#SBATCH --requeue
+#SBATCH --signal=B:USR1@90
 #SBATCH --exclude=hpc3-gpu-n54-00
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=72GB
@@ -45,7 +47,7 @@ python -c 'import torch; print("torch", torch.__version__, "cuda", torch.version
 
 
 echo "diffusion start!"
-python scripts/diffusion.py \
+exec bash slurm-hpc3/run_diffusion_requeue.sh python scripts/diffusion.py \
     model_cfg=nucleus2/nucleus2_experiment \
     model_cfg.params.processor_blocks=8 \
     model_cfg.params.embed_dim=512 \

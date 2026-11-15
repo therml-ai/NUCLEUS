@@ -5,6 +5,8 @@
 #SBATCH -o /data/homezvol1/tanishs4/slurm-%x-%j.out
 #SBATCH -e /data/homezvol1/tanishs4/slurm-%x-%j.err
 #SBATCH --nodes=1
+#SBATCH --requeue
+#SBATCH --signal=B:USR1@90
 #SBATCH --cpus-per-task=6
 #SBATCH --mem=36GB
 #SBATCH --gres=gpu:RTX6000:1
@@ -37,7 +39,7 @@ python -c 'import torchvision; from diffusers import UNet2DModel; import natten;
 python -c 'import torch; print("torch", torch.__version__, "cuda", torch.version.cuda, "avail", torch.cuda.is_available(), torch.cuda.get_device_name(0))'
 
 echo "diffusion start!"
-python scripts/diffusion.py \
+exec bash slurm-hpc3/run_diffusion_requeue.sh python scripts/diffusion.py \
     checkpoint_path=/pub/tanishs4/bubbleformer_logs/neighbor_moe_poolboiling64_2026-09-25_56787438/checkpoints/last.ckpt \
     max_steps=30000 \
     log_dir=/pub/tanishs4/bubbleformer_logs/neighbor_moe_poolboiling64_2026-09-25_56787438/checkpoints

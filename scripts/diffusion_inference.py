@@ -128,7 +128,7 @@ def load_diffusion_unet(path, in_channels: int, out_channels: int, cfg, device):
             out_channels=out_channels,
             block_out_channels=tuple(cfg.get("block_out_channels", (16, 32, 64, 128))),
             layers_per_block=int(cfg.get("layers_per_block", 2)),
-            norm_num_groups=int(cfg.get("norm_num_groups", 16)),
+            norm_num_groups=int(cfg.get("norm_num_groups", 8)),
         )
         state = torch.load(path, map_location="cpu", weights_only=False)
         state = state.get("state_dict", state) if isinstance(state, dict) else state

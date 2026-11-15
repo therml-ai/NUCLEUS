@@ -5,6 +5,8 @@
 #SBATCH -o /data/homezvol1/tanishs4/%x-%j.out
 #SBATCH -e /data/homezvol1/tanishs4/%x-%j.err
 #SBATCH --nodes=1
+#SBATCH --requeue
+#SBATCH --signal=B:USR1@90
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=96GB
 #SBATCH --gres=gpu:RTX6000:1
@@ -40,7 +42,7 @@ python -c 'import torchvision; from diffusers import UNet2DModel; import natten;
 python -c 'import torch; print("torch", torch.__version__, "cuda", torch.version.cuda, "avail", torch.cuda.is_available(), torch.cuda.get_device_name(0))'
 
 echo "diffusion start!"
-python scripts/diffusion.py \
+exec bash slurm-hpc3/run_diffusion_requeue.sh python scripts/diffusion.py \
     model_cfg=nucleus2/nucleus2_experiment \
     model_cfg.params.processor_blocks=8 \
     model_cfg.params.embed_dim=512 \
