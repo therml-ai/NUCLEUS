@@ -1,4 +1,4 @@
-name: nucleus2_moe_continuity_loss
+name: nucleus2_moe_staggered
 params:
   patch_size: 4
   embed_dim: 512

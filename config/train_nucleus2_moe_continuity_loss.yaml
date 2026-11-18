@@ -36,7 +36,6 @@ loop:
 
 training:
   continuity_loss_weight: 1.0
-  use_mass_transfer: false
   load_balance_loss_weight: 1.0e-5
   z_loss_weight: 1.0e-5
   flip_probability: 0.5

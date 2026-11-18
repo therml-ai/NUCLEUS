@@ -1,0 +1,29 @@
+program: scripts/train/train_nucleus2_moe_continuity_loss.py
+method: grid
+project: nucleus
+entity: hpcforge
+
+parameters:
+  training.continuity_loss_weight:
+    values: [0.0, 0.01, 0.1, 1.0]
+
+# ${args_no_hyphens} passes sweep parameters as key=value (no leading dashes),
+# which is the format Hydra expects.
+command:
+  - ${env}
+  - python
+  - ${program}
+  - split_dir=/share/crsp/lab/amowli/share/Bubbleml3/singlebubble-fc72-twall
+  - model_cfg.params.processor_blocks=12
+  - model_cfg.params.embed_dim=512
+  - model_cfg.params.num_experts=6
+  - model_cfg.params.moe_intermediate_dim=2048
+  - model_cfg.params.patch_size=16
+  - model_cfg.params.patching=Linear
+  - model_cfg.params.activation_dtype=bfloat16
+  - data.batch_size=8
+  - data.in_memory=true
+  - loop.accumulate_grad_batches=1
+  - loop.max_steps=20000
+  - log_dir=/pub/shrujans/nucleus_logs
+  - ${args_no_hyphens}
