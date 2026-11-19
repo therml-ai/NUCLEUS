@@ -1,5 +1,4 @@
 from typing import List, Optional
-import json
 import random
 import numpy as np
 import h5py as h5
@@ -8,6 +7,7 @@ from torch.utils.data import Dataset
 from nucleus.data.batching import make_data
 from nucleus.data.normalize import Normalizer
 from nucleus.data.layout import convert_layout
+from nucleus.data.sim_params import load_sim_params
 
 
 class ForecastDatasetBase(Dataset):
@@ -33,11 +33,7 @@ class ForecastDatasetBase(Dataset):
         self.layout = layout
         self.data = None
 
-        fluid_params_files = [fname.replace(".hdf5", ".json") for fname in filenames]
-        self.fluid_params = []
-        for fluid_params_file in fluid_params_files:
-            with open(fluid_params_file, "r", encoding="utf-8") as f:
-                self.fluid_params.append(json.load(f))
+        self.fluid_params = [load_sim_params(filename) for filename in filenames]
 
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -104,6 +100,7 @@ class ForecastDataset(ForecastDatasetBase):
         self.history_time_window = history_time_window
         self.time_step = time_step
         self.start_time = start_time
+        self.sim_params = self.fluid_params
         self.fluid_params = fluid_params
         self.heater_params = heater_params
         self.global_params = global_params
@@ -119,13 +116,6 @@ class ForecastDataset(ForecastDatasetBase):
 
         self.diff_terms = {k:[] for k in self.fields}
         self.div_terms = {k:[] for k in self.fields}
-
-        sim_params_files = [fname.replace(".hdf5", ".json") for fname in filenames]
-        self.sim_params = []
-        for sim_params_file in sim_params_files:
-            with open(sim_params_file, "r", encoding="utf-8") as f:
-                sim_params_json = json.load(f)
-            self.sim_params.append(sim_params_json)
 
     def _get_traj_len(self, traj_len: int) -> int:
         return traj_len - self.start_time - self.future_time_window - self.history_time_window + 1
