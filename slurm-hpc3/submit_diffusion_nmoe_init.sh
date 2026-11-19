@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -A AMOWLI_LAB
 #SBATCH -p standard
-#SBATCH --job-name=diff-single-init
+#SBATCH --job-name=diff-nmoe-init
 #SBATCH -o /data/homezvol1/tanishs4/%x-%j.out
 #SBATCH -e /data/homezvol1/tanishs4/%x-%j.err
 #SBATCH --nodes=1
