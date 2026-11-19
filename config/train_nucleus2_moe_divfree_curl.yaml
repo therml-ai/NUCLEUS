@@ -1,0 +1,55 @@
+# a directory made by boiling-data's scripts/split_dataset.py: train/, val/ and test/
+# directories and the split.json listing their cases. Training reads train and val.
+split_dir: ???
+# directory to write the run's config, checkpoints and wandb files
+log_dir: ???
+# resume training from this checkpoint
+checkpoint_path:
+seed: 42
+# run a few steps on whatever device is available, without wandb, checkpoints or
+# DataLoader worker processes, to check the training loop
+smoke: false
+# torch.compile the model's tensor step; only on CUDA. The physics runs outside
+# the step, in forward, so it is not compiled.
+compile: false
+
+wandb:
+  enabled: true
+  project: nucleus
+  entity: hpcforge
+
+data:
+  input_timesteps: 8
+  target_timesteps: 8
+  start_frame: 200
+  # frames between consecutive windows; > 1 trains on less correlated windows
+  stride: 1
+  # target windows per sample; > 1 lets training push the input forward
+  unroll_steps: 1
+  in_memory: false
+  batch_size: 16
+  num_workers: 8
+
+loop:
+  max_steps: 20000
+  accumulate_grad_batches: 1
+  val_every_n_steps: 1000
+  log_every_n_steps: 50
+  max_val_batches:
+
+training:
+  load_balance_loss_weight: 1.0e-5
+  z_loss_weight: 1.0e-5
+  flip_probability: 0.5
+  min_noise_std: 1.0e-3
+  max_noise_std: 5.0e-2
+  # with probability push_forward_probability, train on up to unroll_steps - 1
+  # windows predicted by the model itself
+  push_forward_probability: 0.0
+
+defaults:
+  - _self_
+  - data_cfg: flashx
+  - model_cfg: nucleus2/nucleus2_divfree_curl
+  - optim_cfg: adamw
+  - scheduler_cfg: cosine_warmup

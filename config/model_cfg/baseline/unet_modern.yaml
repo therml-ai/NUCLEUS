@@ -1,5 +1,0 @@
-name: unet_modern
-params:
-  hidden_channels: 32
-  ch_mults: [1, 2, 2, 4, 4]
-  norm: True

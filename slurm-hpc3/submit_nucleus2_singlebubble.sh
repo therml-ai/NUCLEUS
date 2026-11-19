@@ -1,13 +1,13 @@
 #!/bin/bash
 #SBATCH -A amowli_lab_gpu
-#SBATCH -p free-gpu
+#SBATCH -p gpu
 #SBATCH --job-name=train-nucleus-singlebubble
 #SBATCH -o slurm-%x-%j.out
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=75GB
 #SBATCH --gres=gpu:A30:1
-#SBATCH --time=12:59:00
+#SBATCH --time=00:59:00
 
 uv venv $TMPDIR/NUCLEUS
 source $TMPDIR/NUCLEUS/bin/activate
@@ -20,24 +20,25 @@ export PYTHONPYCACHE_DIR=$TMPDIR/pycache/
 uv sync --no-cache --active --extra cu130
 uv pip install -e .
 
-python scripts/train.py \
-    model_cfg=nucleus2/nucleus2_divfree \
-    model_cfg.params.processor_blocks=8 \
-    model_cfg.params.embed_dim=512 \
-    model_cfg.params.num_experts=6 \
+# a directory made by boiling-data's scripts/split_dataset.py, holding the
+# statistics.json that its scripts/bubbleml_statistics.py wrote for the train cases
+SPLIT_DIR=/share/crsp/lab/amowli/share/Bubbleml3/singlebubble-fc72-twall
+
+python scripts/train/train_nucleus2_moe_divfree_projection.py \
+    split_dir=$SPLIT_DIR \
+    model_cfg.params.processor_blocks=6 \
+    model_cfg.params.embed_dim=256 \
+    model_cfg.params.num_experts=4 \
     model_cfg.params.moe_intermediate_dim=1024 \
     model_cfg.params.patch_size=16 \
     model_cfg.params.patching="Linear" \
-    model_cfg.params.activation_dtype="float32" \
-    pydataset=in_mem_forecast \
-    data_dir=/share/crsp/lab/amowli/share/BubbleML_2/ \
-    data_cfg=singlebubble \
-    normalizer_cfg=divfree \
-    batch_size=16 \
-    accumulate_grad_batches=1 \
+    model_cfg.params.activation_dtype="bfloat16" \
+    data.batch_size=16 \
+    data.in_memory=true \
+    loop.accumulate_grad_batches=1 \
     optim_cfg.params.lr=5e-4 \
     optim_cfg.params.weight_decay=1e-2 \
-    max_steps=150000 \
+    loop.max_steps=150000 \
     scheduler_cfg=trapezoidal \
     scheduler_cfg.params.warmup=4000 \
     scheduler_cfg.params.cooldown=40000 \

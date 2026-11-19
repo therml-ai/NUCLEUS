@@ -4,6 +4,8 @@ import torch.nn as nn
 from typing import Tuple, Union
 import einops
 
+from .cast import CastLinear
+
 class HMLPEmbed(nn.Module):
     """
     Image to Patch Embedding using hierarchical Conv2d.
@@ -118,12 +120,12 @@ class HMLPDebed(nn.Module):
         return x.to(torch.float32)
 
 class LinearEmbed(nn.Module):
-    def __init__(self, patch_size: int, in_channels: int, embed_dim: int, dtype: torch.dtype):
+    def __init__(self, patch_size: int, in_channels: int, embed_dim: int):
         super().__init__()
         self.patch_size = patch_size
         self.in_channels = in_channels
         self.embed_dim = embed_dim
-        self.linear = nn.Linear(in_channels * patch_size ** 2, embed_dim, bias=False, dtype=dtype)
+        self.linear = CastLinear(in_channels * patch_size ** 2, embed_dim, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = einops.rearrange(x, "b t (h p1) (w p2) c -> b t h w (c p1 p2)", p1=self.patch_size, p2=self.patch_size)
@@ -131,12 +133,12 @@ class LinearEmbed(nn.Module):
         return x
 
 class LinearDebed(nn.Module):
-    def __init__(self, patch_size: int, out_channels: int, embed_dim: int, dtype: torch.dtype):
+    def __init__(self, patch_size: int, out_channels: int, embed_dim: int):
         super().__init__()
         self.patch_size = patch_size
         self.out_channels = out_channels
         self.embed_dim = embed_dim
-        self.linear = nn.Linear(embed_dim, out_channels * patch_size ** 2, bias=False, dtype=dtype)
+        self.linear = CastLinear(embed_dim, out_channels * patch_size ** 2, bias=False)
 
     def forward(self, x: torch.Tensor, target_shape: Tuple[int, int]) -> torch.Tensor:
         x = self.linear(x)
@@ -211,11 +213,11 @@ class AdaptiveDebed(nn.Module):
     The target spatial size (H, W) is passed at forward time since it is
     determined by the original input resolution, which varies at runtime.
     """
-    def __init__(self, in_channels: int, out_channels: int, patch_shape: Tuple[int, int], dtype: torch.dtype, num_freq_bands: int = 4):
+    def __init__(self, in_channels: int, out_channels: int, patch_shape: Tuple[int, int], num_freq_bands: int = 4):
         super().__init__()
         self.patch_shape = patch_shape
         self.num_freq_bands = num_freq_bands
-        self.linear = nn.Linear(in_channels + 4 * num_freq_bands, out_channels, bias=False, dtype=dtype)
+        self.linear = CastLinear(in_channels + 4 * num_freq_bands, out_channels, bias=False)
 
     def forward(self, x: torch.Tensor, target_shape: Tuple[int, int]) -> torch.Tensor:
         leading = x.shape[:-3]
@@ -240,12 +242,12 @@ class AdaptiveEmbed(nn.Module):
     Local Fourier coordinates are projected into embed space before pooling
     so that within-patch position information survives the averaging step.
     """
-    def __init__(self, in_channels, out_channels, out_shape: Tuple[int, int], dtype: torch.dtype, num_freq_bands: int = 4):
+    def __init__(self, in_channels, out_channels, out_shape: Tuple[int, int], num_freq_bands: int = 4):
         super().__init__()
         self.out_shape = out_shape
         self.num_freq_bands = num_freq_bands
-        self.linear = nn.Linear(in_channels, out_channels, bias=False, dtype=dtype)
-        self.coord_proj = nn.Linear(4 * num_freq_bands, out_channels, bias=False, dtype=dtype)
+        self.linear = CastLinear(in_channels, out_channels, bias=False)
+        self.coord_proj = CastLinear(4 * num_freq_bands, out_channels, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         leading = x.shape[:-3]

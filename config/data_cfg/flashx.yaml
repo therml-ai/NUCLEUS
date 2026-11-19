@@ -1,0 +1,4 @@
+# The normalization statistics of the training cases, computed with boiling-data's
+# scripts/bubbleml_statistics.py --output. The cases themselves come from split_dir.
+dataset: flashx
+statistics_path: ${split_dir}/statistics.json

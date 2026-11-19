@@ -19,11 +19,15 @@ export PYTHONPYCACHE_DIR=$TMPDIR/pycache/
 uv sync --no-cache --active --extra cu130
 uv pip install -e .
 
-python scripts/inf.py \
+# a directory made by boiling-data's scripts/split_dataset.py, holding the
+# statistics.json that its scripts/bubbleml_statistics.py wrote for the train cases
+SPLIT_DIR=  # TODO: the split converted data
+
+# rollouts are written next to the checkpoint, in a rollouts directory
+CKPT=  # TODO: a last.pt or best.pt written by scripts/train/train_nucleus2_moe.py
+
+python scripts/rollout.py \
+    checkpoint_path=$CKPT \
     model_cfg=nucleus2/nucleus2_experiment \
-    checkpoint_path=/share/crsp/lab/amowli/share/nucleus2-model-ckpts/neighbor_moe_exp_may13.ckpt \
-    data_dir=/share/crsp/lab/amowli/share/BubbleML_2/ \
-    data_cfg=poolboiling64 \
-    normalizer_cfg=standard \
-    log_dir=/pub/afeeney/nucleus_logs/ \
-    trajectory_steps=1500 \
+    split_dir=$SPLIT_DIR \
+    trajectory_steps=1500

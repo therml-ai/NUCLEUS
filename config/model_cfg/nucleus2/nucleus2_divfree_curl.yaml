@@ -1,0 +1,21 @@
+name: nucleus2_moe_divfree_curl
+params:
+  patch_size: 4
+  embed_dim: 512
+  moe_intermediate_dim: 1024
+  processor_blocks: 12
+  num_heads: 8
+  num_experts: 6
+  topk: 2
+  patching: "Linear"
+  activation_dtype: "bfloat16"
+  # hold the temperature at saturation on the interface and at the heater temperature
+  # on the heater; fixed at init, since it sets what the network learns
+  use_temperature_ansatz: false
+  # physics in the forward pass
+  use_sdf_reinit: false
+  # zero the network's divergence source away from the interface; skipped with
+  # use_mass_transfer, whose source is zero there already
+  use_div_gate: false
+  # take the divergence source from the continuity equation, not the network
+  use_mass_transfer: false

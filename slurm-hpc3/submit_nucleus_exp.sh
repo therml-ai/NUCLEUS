@@ -20,8 +20,12 @@ export PYTHONPYCACHE_DIR=$TMPDIR/pycache/
 uv sync --no-cache --active --extra cu130
 uv pip install -e .
 
-python scripts/train.py \
-    model_cfg=nucleus2/nucleus2_divfree \
+# a directory made by boiling-data's scripts/split_dataset.py, holding the
+# statistics.json that its scripts/bubbleml_statistics.py wrote for the train cases
+SPLIT_DIR=  # TODO: the split converted data
+
+python scripts/train/train_nucleus2_moe_divfree_projection.py \
+    split_dir=$SPLIT_DIR \
     model_cfg.params.processor_blocks=8 \
     model_cfg.params.embed_dim=512 \
     model_cfg.params.num_experts=6 \
@@ -29,13 +33,11 @@ python scripts/train.py \
     model_cfg.params.patch_size=16 \
     model_cfg.params.patching="Linear" \
     model_cfg.params.activation_dtype="float32" \
-    data_cfg=poolboiling \
-    normalizer_cfg=divfree \
-    batch_size=64 \
-    accumulate_grad_batches=2 \
+    data.batch_size=64 \
+    loop.accumulate_grad_batches=2 \
     optim_cfg.params.lr=1e-3 \
     optim_cfg.params.weight_decay=1e-3 \
-    max_steps=100000 \
+    loop.max_steps=100000 \
     scheduler_cfg=trapezoidal \
     scheduler_cfg.params.warmup=2000 \
     scheduler_cfg.params.cooldown=20000 \

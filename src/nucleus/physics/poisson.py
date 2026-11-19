@@ -105,13 +105,9 @@ def _dst4_matrix(n: int, device, dtype) -> torch.Tensor:
 
 
 def solve_poisson_dirichlet_neumann(source: torch.Tensor, dx: float, dy: float) -> torch.Tensor:
-    """Solve ``laplacian(psi) = source`` on a cell-centered grid with Dirichlet
-    (``psi = 0``) on the closed left/right/bottom walls and Neumann
-    (``d psi/dy = 0``) at the top outflow -- the streamfunction's boundary
-    conditions (each closed wall is a streamline). The eigenbasis is DST-II in x
-    (Dirichlet both walls) and DST-IV in y (Dirichlet bottom, Neumann top).
-    ``source`` has shape ``(..., H, W)``; leading dims broadcast. Differentiable.
-    """
+    """Solve ``laplacian(psi) = source`` on ``(..., H, W)`` cell centers with Dirichlet
+    ``psi = 0`` walls (left/right/bottom) and Neumann at the top outflow -- the
+    streamfunction boundary conditions. DST-II in x, DST-IV in y. Differentiable."""
     height, width = source.shape[-2], source.shape[-1]
     device, dtype = source.device, source.dtype
 
@@ -130,17 +126,9 @@ def solve_poisson_dirichlet_neumann(source: torch.Tensor, dx: float, dy: float) 
 
 
 def solve_poisson_neumann_dirichlet(source: torch.Tensor, dx: float, dy: float) -> torch.Tensor:
-    """Solve ``laplacian(phi) = source`` on a cell-centered grid.
-
-    NOTE: This is hard-coded for a pool-boiling setup.
-    Boundary conditions: Neumann (``d phi/dn = 0``) on the left/right/bottom walls
-    and Dirichlet (``phi = 0``) at the top outflow, matching
-    
-    Args:
-        source: (..., H, W), 
-        dx: float
-        dy: float
-    """
+    """Solve ``laplacian(phi) = source`` on ``(..., H, W)`` cell centers with Neumann
+    walls (left/right/bottom) and Dirichlet ``phi = 0`` at the top outflow -- the
+    pressure/potential boundary conditions. DCT-II in x, DCT-IV in y. Differentiable."""
     height, width = source.shape[-2], source.shape[-1]
     device, dtype = source.device, source.dtype
 
@@ -162,15 +150,11 @@ def solve_poisson_neumann_dirichlet(source: torch.Tensor, dx: float, dy: float) 
 
 @lru_cache(maxsize=None)
 def _nodal_laplacian_eigsystem(height, width, dx, dy, device, dtype):
-    """Eigen-decomposition of the separable nodal Laplacian for the streamfunction
-    solve, cached per (height, width, dx, dy, device, dtype).
-
-    x acts on interior nodes i=1..width-1 with Dirichlet walls (symmetric
-    tridiagonal). y acts on nodes j=1..height with Dirichlet at the bottom wall
-    and Neumann at the top outflow -- the ghost ``psi[H+1] = psi[H-1]`` makes the
-    top row non-symmetric, so it is diagonalized directly (``torch.linalg.eig``).
-    Only the source is differentiated through; the eigenvectors are grid constants.
-    """
+    """Cached eigendecomposition of the separable nodal Laplacian for the
+    streamfunction solve: Dirichlet walls in x, Dirichlet bottom and Neumann top in y."""
+    # The Neumann ghost psi[H+1] = psi[H-1] makes the y operator non-symmetric, so
+    # it goes through torch.linalg.eig; the eigenvectors are grid constants and are
+    # not differentiated through.
     main_x = -2.0 * torch.ones(width - 1, device=device, dtype=dtype)
     off_x = torch.ones(width - 2, device=device, dtype=dtype)
     laplacian_x = (torch.diag(main_x) + torch.diag(off_x, 1) + torch.diag(off_x, -1)) / dx**2
@@ -209,12 +193,9 @@ def stream_function_from_faces(facex, facey, dx, dy):
 
 
 def helmholtz_from_faces(facex, facey, dx, dy):
-    """Staggered Helmholtz decomposition of a face-valued velocity field into the
-    nodal streamfunction psi ``(..., H+1, W+1)`` (solenoidal part) and the
-    cell-centered potential phi ``(..., H, W)`` (dilatational part).
-
-    Accepts either torch tensors or numpy arrays. If given numpy arrays the
-    outputs are returned as numpy arrays, so numpy callers never see a tensor."""
+    """Helmholtz decomposition of a face velocity into the nodal streamfunction
+    ``(..., H+1, W+1)`` and the cell-centered potential ``(..., H, W)``. Numpy in
+    gives numpy out."""
     return_numpy = isinstance(facex, np.ndarray)
     if return_numpy:
         facex = torch.from_numpy(facex)

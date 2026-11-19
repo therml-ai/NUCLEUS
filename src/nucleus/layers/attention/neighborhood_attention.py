@@ -4,6 +4,7 @@ from rotary_embedding_torch import apply_rotary_emb
 import natten
 
 from .natten_configs import get_natten_config
+from ..cast import CastLinear, CastRMSNorm
 
 class NeighborhoodAttention(nn.Module):
     r"""
@@ -24,10 +25,11 @@ class NeighborhoodAttention(nn.Module):
         
         assert self.head_dim % 16 == 0
 
-        self.input_head = nn.Linear(embed_dim, 3 * embed_dim, dtype=torch.bfloat16, bias=False)
-        self.output_head = nn.Linear(embed_dim, embed_dim, dtype=torch.bfloat16, bias=False)
-        self.qnorm = nn.RMSNorm(self.head_dim, dtype=torch.bfloat16)
-        self.knorm = nn.RMSNorm(self.head_dim, dtype=torch.bfloat16)
+        # computed in the dtype of the input the block casts it to
+        self.input_head = CastLinear(embed_dim, 3 * embed_dim, bias=False)
+        self.output_head = CastLinear(embed_dim, embed_dim, bias=False)
+        self.qnorm = CastRMSNorm(self.head_dim)
+        self.knorm = CastRMSNorm(self.head_dim)
                 
         natten.use_kv_parallelism_in_fused_na(mode=True)
         # Unrestricted may increase memory usage, but allows for better performance.

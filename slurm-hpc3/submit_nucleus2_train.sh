@@ -20,8 +20,12 @@ export PYTHONPYCACHE_DIR=$TMPDIR/pycache/
 uv sync --no-cache --active --extra cu130
 uv pip install -e .
 
-python scripts/train.py \
-    model_cfg=nucleus2/nucleus2_experiment \
+# a directory made by boiling-data's scripts/split_dataset.py, holding the
+# statistics.json that its scripts/bubbleml_statistics.py wrote for the train cases
+SPLIT_DIR=  # TODO: the split converted data
+
+python scripts/train/train_nucleus2_moe.py \
+    split_dir=$SPLIT_DIR \
     model_cfg.params.processor_blocks=8 \
     model_cfg.params.embed_dim=512 \
     model_cfg.params.num_experts=6 \
@@ -29,17 +33,12 @@ python scripts/train.py \
     model_cfg.params.patch_size=16 \
     model_cfg.params.patching="Linear" \
     model_cfg.params.activation_dtype="float32" \
-    data_cfg=poolboiling \
-    data_dir=/share/crsp/lab/amowli/share/BubbleML_2/ \
-    pydataset="forecast" \
-    normalizer_cfg=standard \
-    batch_size=4 \
-    accumulate_grad_batches=2 \
+    data.batch_size=4 \
+    loop.accumulate_grad_batches=2 \
     optim_cfg.params.lr=2e-3 \
     optim_cfg.params.weight_decay=1e-3 \
     scheduler_cfg=trapezoidal \
-    max_steps=100000 \
+    loop.max_steps=100000 \
     scheduler_cfg.params.warmup=5000 \
     scheduler_cfg.params.cooldown=10000 \
-    log_dir=/pub/afeeney/nucleus2_logs \
-    profile=True
+    log_dir=/pub/afeeney/nucleus2_logs
