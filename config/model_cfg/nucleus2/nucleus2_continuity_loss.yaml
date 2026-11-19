@@ -1,0 +1,11 @@
+name: nucleus2_moe_staggered
+params:
+  patch_size: 4
+  embed_dim: 512
+  moe_intermediate_dim: 2048
+  processor_blocks: 12
+  num_heads: 8
+  num_experts: 6
+  topk: 2
+  patching: "Linear"
+  activation_dtype: "bfloat16"

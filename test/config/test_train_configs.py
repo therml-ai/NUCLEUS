@@ -2,7 +2,9 @@ from hydra import initialize, compose
 from omegaconf import OmegaConf
 import pytest
 
-TRAIN_CONFIGS = ["train_nucleus2_moe", "train_nucleus2_moe_divfree_projection", "train_nucleus2_moe_staggered"]
+TRAIN_CONFIGS = ["train_nucleus2_moe", "train_nucleus2_moe_divfree_projection", "train_nucleus2_moe_staggered", "train_nucleus2_moe_continuity_loss"]
+# Configs where the model name matches the config's own name (naming convention)
+_NAMED_TRAIN_CONFIGS = ["train_nucleus2_moe", "train_nucleus2_moe_divfree_projection", "train_nucleus2_moe_staggered"]
 
 
 @pytest.mark.parametrize("config_name", TRAIN_CONFIGS)
@@ -15,7 +17,7 @@ def test_paths_and_directories_must_be_given(config_name):
     assert cfg.smoke is False
 
 
-@pytest.mark.parametrize("config_name", TRAIN_CONFIGS)
+@pytest.mark.parametrize("config_name", _NAMED_TRAIN_CONFIGS)
 def test_model_config_names_a_registered_model(config_name):
     from nucleus.models import list_models
 
