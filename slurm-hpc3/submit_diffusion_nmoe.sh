@@ -19,6 +19,14 @@ trap 'exit_code=$?; echo "Job ${SLURM_JOB_ID:-unknown} failed at line $LINENO (e
 export HYDRA_FULL_ERROR=1
 echo "Starting job ${SLURM_JOB_ID:-unknown} on $(hostname)"
 
+preflight=false
+if [[ "${1:-}" == --preflight ]]; then
+    preflight=true
+    shift
+    export CUDA_VISIBLE_DEVICES=""
+    echo "Running NMoE diffusion preflight on CPU"
+fi
+
 project_dir="${NUCLEUS_PROJECT_DIR:-/pub/tanishs4/NUCLEUS}"
 if [[ ! -f "$project_dir/pyproject.toml" || ! -f "$project_dir/scripts/diffusion.py" ]]; then
     echo "NUCLEUS project not found at $project_dir. Set NUCLEUS_PROJECT_DIR to the repository root." >&2
@@ -28,9 +36,14 @@ cd "$project_dir"
 echo "Running NUCLEUS from $PWD"
 
 echo "env setup"
-uv venv "$TMPDIR/NUCLEUS"
-source "$TMPDIR/NUCLEUS/bin/activate"
-export PYTHONPYCACHE_DIR="$TMPDIR/pycache"
+scratch_dir="${TMPDIR:-/tmp}"
+environment_dir="$scratch_dir/NUCLEUS"
+if "$preflight"; then
+    environment_dir="$scratch_dir/NUCLEUS-nmoe-preflight-${USER}-${SLURM_JOB_ID:-manual}"
+fi
+uv venv "$environment_dir"
+source "$environment_dir/bin/activate"
+export PYTHONPYCACHEPREFIX="$environment_dir/pycache"
 export PYTHONUNBUFFERED=1
 
 echo "deps"
@@ -39,27 +52,32 @@ uv sync --no-cache --active --extra cu130
 uv pip check
 python -c 'import torchvision; from diffusers import UNet2DModel; import natten; print("torchvision", torchvision.__version__, "natten", natten.__version__)'
 
-python -c 'import torch; print("torch", torch.__version__, "cuda", torch.version.cuda, "avail", torch.cuda.is_available(), torch.cuda.get_device_name(0))'
+diffusion_args=(
+    model_cfg=nucleus2/nucleus2_experiment
+    model_cfg.params.processor_blocks=8
+    model_cfg.params.embed_dim=512
+    model_cfg.params.num_experts=6
+    model_cfg.params.moe_intermediate_dim=1024
+    model_cfg.params.patch_size=16
+    model_cfg.params.patching=Linear
+    model_cfg.params.activation_dtype=float32
+    data_cfg=poolboiling
+    normalizer_cfg=standard
+    pydataset=in_mem_forecast
+    data_dir=/share/crsp/lab/amowli/share/BubbleML_2/
+    checkpoint_path=/pub/tanishs4/nucleus2_logs/nucleus2_moe_poolboiling512_2026-10-29_58609204/checkpoints/last.ckpt
+    history_time_window=8
+    future_time_window=8
+    time_step=1
+    batch_size=4
+    max_steps=100
+    log_dir=/pub/tanishs4/nucleus2_logs/nucleus2_moe_poolboiling512_2026-10-29_58609204
+)
 
+if "$preflight"; then
+    exec python scripts/diffusion.py "${diffusion_args[@]}" "$@" +diffusion_preflight=true
+fi
+
+python -c 'import torch; print("torch", torch.__version__, "cuda", torch.version.cuda, "avail", torch.cuda.is_available(), torch.cuda.get_device_name(0))'
 echo "diffusion start!"
-exec bash slurm-hpc3/run_diffusion_requeue.sh python scripts/diffusion.py \
-    model_cfg=nucleus2/nucleus2_experiment \
-    model_cfg.params.processor_blocks=8 \
-    model_cfg.params.embed_dim=512 \
-    model_cfg.params.num_experts=6 \
-    model_cfg.params.moe_intermediate_dim=1024 \
-    model_cfg.params.patch_size=16 \
-    model_cfg.params.patching=Linear \
-    model_cfg.params.activation_dtype=float32 \
-    data_cfg=poolboiling \
-    normalizer_cfg=standard \
-    pydataset=in_mem_forecast \
-    data_dir=/share/crsp/lab/amowli/share/BubbleML_2/ \
-    checkpoint_path=/pub/tanishs4/nucleus2_logs/nucleus2_moe_poolboiling512_2026-10-29_58609204/checkpoints/last.ckpt \
-    history_time_window=8 \
-    future_time_window=8 \
-    time_step=1 \
-    batch_size=4 \
-    max_steps=100 \
-    log_dir=/pub/tanishs4/nucleus2_logs/nucleus2_moe_poolboiling512_2026-10-29_58609204 \
-    "$@"
+exec bash slurm-hpc3/run_diffusion_requeue.sh python scripts/diffusion.py "${diffusion_args[@]}" "$@"

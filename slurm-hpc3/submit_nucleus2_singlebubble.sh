@@ -30,7 +30,7 @@ python scripts/train.py \
     model_cfg.params.patching="Linear" \
     model_cfg.params.activation_dtype="float32" \
     pydataset=in_mem_forecast \
-    data_dir=/share/crsp/lab/amowli/share/BubbleML_staggered/ \
+    data_dir=/share/crsp/lab/amowli/share/BubbleML_2/ \
     data_cfg=singlebubble \
     normalizer_cfg=divfree \
     batch_size=16 \

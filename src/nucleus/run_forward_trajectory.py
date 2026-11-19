@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 from typing import Union
 import h5py
-import json
 import torch
 
 from nucleus.data.layout import convert_layout
+from nucleus.data.sim_params import load_sim_params
 from nucleus.trajectory import Trajectory
 from nucleus.models.nucleus2_moe_divfree import Nucleus2MoEDivFree
 
@@ -44,9 +44,7 @@ def run_test(cfg, model, normalizer, test_file_path: str, trajectory_steps: int)
             velfacex = torch.from_numpy(handle["velfacex"][:])
             velfacey = torch.from_numpy(handle["velfacey"][:])
 
-    json_path = test_file_path.replace(".hdf5", ".json")
-    with open(json_path, "r") as handle:
-        sim_params_dict: dict = json.load(handle)
+    sim_params_dict = load_sim_params(test_file_path)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     window = slice(cfg.start_time, cfg.start_time + cfg.history_time_window)

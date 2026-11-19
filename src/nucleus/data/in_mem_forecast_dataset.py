@@ -1,5 +1,4 @@
 from typing import List, Optional
-import json
 import numpy as np
 import h5py as h5
 import random
@@ -10,6 +9,7 @@ from nucleus.data.batching import Data
 from nucleus.data.batching import make_data
 from nucleus.data.normalize import Normalizer
 from nucleus.data.layout import convert_layout
+from nucleus.data.sim_params import load_sim_params
 
 class InMemForecastDataset(Dataset):
     def __init__(
@@ -51,16 +51,19 @@ class InMemForecastDataset(Dataset):
             self.output_fields = ["dfun", "temperature", "velx", "vely"]
         self.fields = list(set(self.input_fields + self.output_fields))
         
+        self.sim_params = []
+        for filename in filenames:
+            sim_params = load_sim_params(filename)
+            if "bulk_temp" not in sim_params:
+                raise ValueError(
+                    f"The JSON sidecar for {filename} is missing the required "
+                    "'bulk_temp' simulation parameter."
+                )
+            self.sim_params.append(sim_params)
+
         self.data = self._load_data()
         self.num_trajs = [1 for _ in range(len(self.filenames))]
-        self.traj_lens = [d[self.input_fields[0]].shape[0] for d in self.data]
-
-        sim_params_files = [fname.replace(".hdf5", ".json") for fname in filenames]
-        self.sim_params = []
-        for sim_params_file in sim_params_files:
-            with open(sim_params_file, "r", encoding="utf-8") as f:
-                sim_params_json = json.load(f)
-            self.sim_params.append(sim_params_json)
+        self.traj_lens = [data[self.input_fields[0]].shape[0] for data in self.data]
 
     def _load_data(self):
         hdf5_files = [h5.File(filename, "r") for filename in self.filenames]

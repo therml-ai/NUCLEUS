@@ -1,6 +1,5 @@
 from dataclasses import dataclass, fields, replace
 from typing import Callable, Dict, List, Optional, Tuple
-import json
 import random
 
 import numpy as np
@@ -10,6 +9,7 @@ from torch.utils.data import Dataset
 
 from nucleus.data.batching import Data, make_data
 from nucleus.data.normalize import Normalizer
+from nucleus.data.sim_params import load_sim_params
 from nucleus.physics.poisson import helmholtz_from_faces, GRID_SPACING
 
 
@@ -176,10 +176,7 @@ class InMemDivFreeForecastDataset(Dataset):
         self.data = self._load_data()
         self.traj_lens = [trajectory[BASE_FIELDS[0]].shape[0] for trajectory in self.data]
 
-        self.sim_params = []
-        for filename in filenames:
-            with open(filename.replace(".hdf5", ".json"), "r", encoding="utf-8") as handle:
-                self.sim_params.append(json.load(handle))
+        self.sim_params = [load_sim_params(filename) for filename in filenames]
 
     def _load_data(self) -> List[Dict[str, torch.Tensor]]:
         data = []

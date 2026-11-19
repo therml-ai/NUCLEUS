@@ -27,7 +27,7 @@ ROLLOUT=/pub/afeeney/nucleus_logs/nucleus2_moe_divfree_singlebubble_2026-09-03_5
 python scripts/inf.py \
     model_cfg=nucleus2/nucleus2_divfree \
     checkpoint_path=$CKPT \
-    data_dir=/share/crsp/lab/amowli/share/BubbleML_staggered/ \
+    data_dir=/share/crsp/lab/amowli/share/BubbleML_2/ \
     data_cfg=singlebubble \
     normalizer_cfg=divfree \
     log_dir=/pub/afeeney/nucleus_logs/ \

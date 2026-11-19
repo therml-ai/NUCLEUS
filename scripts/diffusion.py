@@ -3,6 +3,7 @@ import gc
 import os
 from datetime import date
 
+import h5py
 import torch
 import wandb
 from diffusers.models.unets.unet_2d import UNet2DModel
@@ -12,11 +13,12 @@ from lightning import seed_everything
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 
-from nucleus.data import InMemForecastDataset
-from nucleus.data.batching import collate
+from nucleus.data import ForecastDataset, InMemForecastDataset
+from nucleus.data.batching import collate, get_sim_params
 from nucleus.data.layout import convert_layout
-from nucleus.data.normalize import get_normalizer
-from nucleus.models import load_model_from_checkpoint
+from nucleus.data.normalize import Normalizer, get_normalizer
+from nucleus.data.sim_params import load_sim_params
+from nucleus.models import get_model_class, load_model_from_checkpoint
 from nucleus.models.nucleus2_moe_divfree import (
     Nucleus2MoEDivFreeInput,
     cells_to_x_face,
@@ -29,16 +31,12 @@ from nucleus.utils.preemption import (
 from nucleus.utils.set_fp32_precision import set_fp32_precision
 from nucleus.utils.sdf_reinit import sdf_reinit_sussman
 from nucleus.utils.sdf_metrics import sdf_frame_metrics
-from nucleus.utils.sdf_smoothing import smooth_sdf_frames
 from nucleus.utils.physical_metrics import PhysicalMetrics, BubbleMetrics, physical_metrics, bubble_metrics
 from nucleus.test import TestResults
 from nucleus.plot.plotting import plot_rollout
 from nucleus.plot.diffusion_gif import save_diffusion_gif, save_rollout_gif
 from einops import rearrange
 from pathlib import Path
-
-
-GAUSSIAN_SIGMA_CELLS = (0.5, 1.0)
 
 
 def log_sdf_comparison(run, metric_prefix, variants, target, dx, dy, start_frame):
@@ -94,9 +92,86 @@ def predict_surrogate(model, batch, normalizer, layout: str) -> torch.Tensor:
     return convert_layout(prediction, target_layout=layout, source_layout="t h w c")
 
 
+def check_preflight_file(
+    filename: str,
+    cfg: DictConfig,
+    model_class: type,
+    normalizer: Normalizer,
+    rollout: bool,
+) -> None:
+    try:
+        params = load_sim_params(filename)
+        int(params["bulk_temp"])
+        normalized_params = normalizer.normalize_params([params])[0]
+        get_sim_params(
+            normalized_params, model_class.expected_fluid_params,
+            model_class.expected_heater_params, model_class.expected_global_params,
+        )
+        if rollout:
+            for key in ("setup", "liquid"):
+                if key not in params:
+                    raise ValueError(f"missing rollout metadata {key!r}")
+        required_frames = cfg.start_time + cfg.history_time_window + cfg.future_time_window
+        with h5py.File(filename, "r") as dataset:
+            for field in set(cfg.data_cfg.input_fields) | set(cfg.data_cfg.output_fields):
+                shape = dataset[field].shape
+                if len(shape) != 3 or shape[0] < required_frames:
+                    raise ValueError(f"{field} has shape {shape}, need {required_frames} frames")
+    except (OSError, KeyError, TypeError, ValueError) as error:
+        raise ValueError(f"{filename}: {error}") from error
+
+
+def check_preflight_batch(cfg: DictConfig, model_class: type, normalizer: Normalizer) -> None:
+    # The on-disk dataset loads windows without materializing whole trajectories.
+    dataset = ForecastDataset(
+        filenames=cfg.data_cfg.train_paths[:1],
+        input_fields=cfg.data_cfg.input_fields, output_fields=cfg.data_cfg.output_fields,
+        future_time_window=cfg.future_time_window, history_time_window=cfg.history_time_window,
+        time_step=cfg.time_step, start_time=cfg.start_time, layout=cfg.model_cfg.layout,
+        fluid_params=model_class.expected_fluid_params,
+        heater_params=model_class.expected_heater_params,
+        global_params=model_class.expected_global_params,
+        normalizer=normalizer, augment=False,
+    )
+    batch_size = min(cfg.batch_size, len(dataset))
+    if batch_size < 1:
+        raise ValueError("No complete training window available for preflight.")
+    batch = collate([dataset[index] for index in range(batch_size)])
+    if batch.input.shape != batch.target.shape:
+        raise ValueError(f"Input shape {batch.input.shape} differs from target {batch.target.shape}")
+    fields = convert_layout(batch.input, "t h w c", cfg.model_cfg.layout)
+    _, frames, height, width, channels = fields.shape
+    patch_size = cfg.model_cfg.params.patch_size
+    if frames != cfg.history_time_window or height % patch_size or width % patch_size:
+        raise ValueError(f"Batch shape {tuple(fields.shape)} is incompatible with patch size {patch_size}")
+    if channels != len(cfg.data_cfg.output_fields):
+        raise ValueError(f"Unexpected field count in batch shape {tuple(fields.shape)}")
+    bulk_temps = [params["bulk_temp"] for params in normalizer.unnormalize_params(batch.sim_params_dict)]
+    print(f"CPU batch {tuple(batch.input.shape)}, physical bulk_temp={bulk_temps}", flush=True)
+
+
+def run_preflight(cfg: DictConfig) -> None:
+    with Path(cfg.checkpoint_path).open("rb") as checkpoint:
+        if not checkpoint.read(1):
+            raise ValueError(f"Empty checkpoint: {cfg.checkpoint_path}")
+    print(f"Readable checkpoint: {cfg.checkpoint_path}", flush=True)
+
+    model_class = get_model_class(cfg.model_cfg.name)
+    normalizer = get_normalizer(OmegaConf.to_container(cfg.normalizer_cfg, resolve=True))
+    check_preflight_batch(cfg, model_class, normalizer)
+    for paths, rollout in ((cfg.data_cfg.train_paths, False), (cfg.data_cfg.test_paths, True)):
+        for filename in paths:
+            check_preflight_file(filename, cfg, model_class, normalizer, rollout)
+            print(f"Checked dataset headers and metadata: {filename}", flush=True)
+    print("Diffusion preflight passed.", flush=True)
+
+
 @hydra.main(version_base=None, config_path="../config", config_name="default")
 def main(cfg: DictConfig):
     run_config = OmegaConf.to_container(cfg, resolve=True)
+    if cfg.get("diffusion_preflight", False):
+        run_preflight(cfg)
+        return
     run_config.update({
         "learning_rate": cfg.get("lr", 2.5e-4),
         "lr_warmup_steps": cfg.get("lr_warmup_steps", 150),
@@ -105,7 +180,6 @@ def main(cfg: DictConfig):
         "epochs": 1000,
         "num_train_timesteps": 100,
         "num_inference_steps": 50,
-        "postprocessing_gaussian_sigma_cells": list(GAUSSIAN_SIGMA_CELLS),
     })
     with PreemptionHandler() as preemption:
         with wandb.init(
@@ -194,15 +268,9 @@ def run_diffusion(
         sample_size=None,
         in_channels=3 * window_length * num_fields,
         out_channels=window_length * num_fields,
-        block_out_channels=(16, 32, 64, 128),
+        block_out_channels=(64, 128, 256, 512),
         layers_per_block=2,
-        # norm_num_groups must divide every entry in block_out_channels, including
-        # the first (16) -- UNet2DModel also uses it for norm_out on that width.
-        # Keep it at 16/8 = 2 channels per group: at 16 groups this degenerates to
-        # per-channel InstanceNorm, which zeroes each channel's spatial mean right
-        # before norm_out. For an SDF the absolute level is the signal, so that
-        # forces the output conv to re-synthesize it and shows up as speckle.
-        norm_num_groups=8,
+        norm_num_groups=32,
     ).to(device)
 
     scheduler = FlowMatchEulerDiscreteScheduler(num_train_timesteps=100)
@@ -345,7 +413,7 @@ def run_diffusion(
             pretrained_rollout = data.preds.squeeze(0)
         print(f"Loaded pretrained rollout with shape {pretrained_rollout.shape}")
 
-    save_dir = run_dir / "scaled_down_reduced_noise_1k_step_diffusion_rollout"
+    save_dir = run_dir / "10k_step_diffusion_rollout"
     save_dir.mkdir(parents=True, exist_ok=True)
     sdf_absolute_error_sum = 0.0
     sdf_value_count = 0
@@ -424,7 +492,7 @@ def run_diffusion(
                     pred_raw = predict_surrogate(model, batch, normalizer, layout)
                 pred_flat = _flatten(pred_raw)
 
-                noisy = 0.5 * torch.randn_like(pred_flat)
+                noisy = torch.randn_like(pred_flat)
                 for idx, t in enumerate(scheduler.timesteps):
                     model_input = torch.cat([inp_flat, pred_flat, noisy], dim=1)
                     pn = unet(model_input, torch.full((1,), t, device=device, dtype=torch.float32)).sample
@@ -467,21 +535,12 @@ def run_diffusion(
                     sdf_reinit_sussman(frame, dx=dx, dy=dy)
                     for frame in baseline_sdf
                 ])
-                # Build each reinitialized variant straight from raw_sdf. Keeping the
-                # intermediate blur-only tensors alive alongside them doubled the
-                # number of full-trajectory SDF tensors held per rollout window.
-                smoothed_variants = {
-                    f"diffusion_gaussian_{str(sigma).replace('.', '_')}":
-                    smooth_sdf_frames(raw_sdf, sigma, dx, dy)
-                    for sigma in GAUSSIAN_SIGMA_CELLS
-                }
                 records = log_sdf_comparison(
                     run, metric_prefix,
                     {"ground_truth": target_sdf,
                      "diffusion_raw": raw_sdf, "diffusion_reinitialized": corrected_sdf,
                      "surrogate": baseline_sdf,
-                     "surrogate_reinitialized": baseline_reinitialized,
-                     **smoothed_variants},
+                     "surrogate_reinitialized": baseline_reinitialized},
                     target_sdf, dx, dy, itr,
                 )
                 for key, values in records.items():
@@ -491,8 +550,7 @@ def run_diffusion(
                 torch.save(
                     {"preds": pred, "targets": tgt, "start_index": itr,
                      "diffusion_raw_sdf": raw_sdf, "surrogate_sdf": baseline_sdf,
-                     "surrogate_reinitialized_sdf": baseline_reinitialized,
-                     **smoothed_variants},
+                     "surrogate_reinitialized_sdf": baseline_reinitialized},
                     case_dir / f"window_{itr:06d}.pt",
                 )
                 rollout_window_paths.append(case_dir / f"window_{itr:06d}.pt")
@@ -507,14 +565,6 @@ def run_diffusion(
                 fps=cfg.get("rollout_gif_fps", 10),
             )
             run.log({f"{output_prefix}_comparison_gif": wandb.Video(str(gif_path), format="gif")})
-            for variant in smoothed_variants:
-                gif_path = save_diffusion_gif(
-                    rollout_window_paths, layout, sdf_field_index,
-                    case_dir / f"{variant}.gif",
-                    max_frames=cfg.get("rollout_gif_max_frames", 120),
-                    fps=cfg.get("rollout_gif_fps", 10), variant=variant,
-                )
-                run.log({f"{output_prefix}_{variant}_gif": wandb.Video(str(gif_path), format="gif")})
         for key, values in comparison_records.items():
             metric_values = torch.tensor(values)
             run.summary[f"{key}_mean"] = metric_values.nanmean().item()
@@ -614,3 +664,4 @@ def run_diffusion(
 
 if __name__ == "__main__":
     main()
+    

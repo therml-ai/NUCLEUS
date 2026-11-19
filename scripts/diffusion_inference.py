@@ -38,16 +38,12 @@ from nucleus.models.nucleus2_moe_divfree import (
 from nucleus.utils.set_fp32_precision import set_fp32_precision
 from nucleus.utils.sdf_reinit import sdf_reinit_sussman
 from nucleus.utils.sdf_metrics import sdf_frame_metrics
-from nucleus.utils.sdf_smoothing import smooth_sdf_frames
 from nucleus.utils.physical_metrics import physical_metrics, bubble_metrics
 from nucleus.test import TestResults
 from nucleus.plot.plotting import plot_rollout
 from nucleus.plot.diffusion_gif import save_diffusion_gif, save_rollout_gif
 from einops import rearrange
 from pathlib import Path
-
-
-GAUSSIAN_SIGMA_CELLS = (0.5, 1.0)
 
 
 def log_sdf_comparison(run, metric_prefix, variants, target, dx, dy, start_frame):
@@ -154,7 +150,6 @@ def main(cfg: DictConfig):
         "architecture": "UNet2DModel",
         "num_train_timesteps": 100,
         "num_inference_steps": int(cfg.get("num_inference_steps", 50)),
-        "postprocessing_gaussian_sigma_cells": list(GAUSSIAN_SIGMA_CELLS),
         "diffusion_checkpoint_path": str(cfg.diffusion_checkpoint_path),
     })
     with wandb.init(
@@ -363,21 +358,12 @@ def run_inference(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
                     sdf_reinit_sussman(frame, dx=dx, dy=dy)
                     for frame in baseline_sdf
                 ])
-                # Build each reinitialized variant straight from raw_sdf. Keeping the
-                # intermediate blur-only tensors alive alongside them doubled the
-                # number of full-trajectory SDF tensors held per rollout window.
-                smoothed_variants = {
-                    f"diffusion_gaussian_{str(sigma).replace('.', '_')}":
-                    smooth_sdf_frames(raw_sdf, sigma, dx, dy)
-                    for sigma in GAUSSIAN_SIGMA_CELLS
-                }
                 records = log_sdf_comparison(
                     run, metric_prefix,
                     {"ground_truth": target_sdf,
                      "diffusion_raw": raw_sdf, "diffusion_reinitialized": corrected_sdf,
                      "surrogate": baseline_sdf,
-                     "surrogate_reinitialized": baseline_reinitialized,
-                     **smoothed_variants},
+                     "surrogate_reinitialized": baseline_reinitialized},
                     target_sdf, dx, dy, itr,
                 )
                 for key, values in records.items():
@@ -387,8 +373,7 @@ def run_inference(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
                 torch.save(
                     {"preds": pred, "targets": tgt, "start_index": itr,
                      "diffusion_raw_sdf": raw_sdf, "surrogate_sdf": baseline_sdf,
-                     "surrogate_reinitialized_sdf": baseline_reinitialized,
-                     **smoothed_variants},
+                     "surrogate_reinitialized_sdf": baseline_reinitialized},
                     case_dir / f"window_{itr:06d}.pt",
                 )
                 rollout_window_paths.append(case_dir / f"window_{itr:06d}.pt")
@@ -403,14 +388,6 @@ def run_inference(cfg: DictConfig, run: wandb.sdk.wandb_run.Run) -> None:
                 fps=cfg.get("rollout_gif_fps", 10),
             )
             run.log({f"{output_prefix}_comparison_gif": wandb.Video(str(gif_path), format="gif")})
-            for variant in smoothed_variants:
-                gif_path = save_diffusion_gif(
-                    rollout_window_paths, layout, sdf_field_index,
-                    case_dir / f"{variant}.gif",
-                    max_frames=cfg.get("rollout_gif_max_frames", 120),
-                    fps=cfg.get("rollout_gif_fps", 10), variant=variant,
-                )
-                run.log({f"{output_prefix}_{variant}_gif": wandb.Video(str(gif_path), format="gif")})
         for key, values in comparison_records.items():
             metric_values = torch.tensor(values)
             run.summary[f"{key}_mean"] = metric_values.nanmean().item()
