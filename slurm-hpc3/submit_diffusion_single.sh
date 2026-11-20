@@ -20,24 +20,30 @@ export HYDRA_FULL_ERROR=1
 echo "Starting job ${SLURM_JOB_ID:-unknown} on $(hostname)"
 
 preflight=false
-if [[ "${1:-}" == --preflight ]]; then
+dependency_extra=cu128
+if [[ "${1:-}" == --preflight || "${1:-}" == --local-preflight ]]; then
     preflight=true
+    if [[ "$1" == --local-preflight ]]; then
+        dependency_extra=cpu
+    fi
     shift
     export CUDA_VISIBLE_DEVICES=""
     echo "Running single-bubble diffusion preflight on CPU"
 fi
-if (( $# )); then
-    echo "Usage: bash $0 [--preflight]" >&2
+if ! "$preflight" && (( $# )); then
+    echo "Usage: bash $0 [--preflight|--local-preflight [Hydra overrides...]]" >&2
     exit 2
 fi
 
-cd /pub/tanishs4/NUCLEUS
+project_dir="${NUCLEUS_PROJECT_DIR:-/pub/tanishs4/NUCLEUS}"
+cd "$project_dir"
+echo "Running single-bubble diffusion from $PWD"
 
 echo "env setup"
 scratch_dir="${TMPDIR:-/tmp}"
 environment_dir="$scratch_dir/NUCLEUS"
 if "$preflight"; then
-    environment_dir="$scratch_dir/NUCLEUS-preflight-${USER}-${SLURM_JOB_ID:-manual}"
+    environment_dir="$scratch_dir/NUCLEUS-preflight-$dependency_extra-${USER}-${SLURM_JOB_ID:-manual}"
 fi
 uv venv "$environment_dir"
 source "$environment_dir/bin/activate"
@@ -45,7 +51,7 @@ export PYTHONPYCACHEPREFIX="$environment_dir/pycache"
 export PYTHONUNBUFFERED=1
 
 echo "deps"
-uv sync --no-cache --active --extra cu128
+uv sync --project "$PWD" --no-cache --active --extra "$dependency_extra" --locked
 
 uv pip check
 python -c 'import torchvision; from diffusers import UNet2DModel; import natten; print("torchvision", torchvision.__version__, "natten", natten.__version__)'
@@ -72,7 +78,7 @@ diffusion_args=(
 )
 
 if "$preflight"; then
-    exec python scripts/diffusion.py "${diffusion_args[@]}" +diffusion_preflight=true
+    exec python scripts/diffusion.py "${diffusion_args[@]}" "$@" +diffusion_preflight=true
 fi
 
 python -c 'import torch; print("torch", torch.__version__, "cuda", torch.version.cuda, "avail", torch.cuda.is_available(), torch.cuda.get_device_name(0))'

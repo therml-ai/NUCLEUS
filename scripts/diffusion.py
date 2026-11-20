@@ -1,15 +1,16 @@
 import math
 import gc
 import os
+import random
 from datetime import date
 
 import h5py
+import numpy as np
 import torch
 import wandb
 from diffusers.models.unets.unet_2d import UNet2DModel
 from diffusers.schedulers.scheduling_flow_match_euler_discrete import FlowMatchEulerDiscreteScheduler
 import hydra
-from lightning import seed_everything
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 
@@ -18,22 +19,12 @@ from nucleus.data.batching import collate, get_sim_params
 from nucleus.data.layout import convert_layout
 from nucleus.data.normalize import Normalizer, get_normalizer
 from nucleus.data.sim_params import load_sim_params
-from nucleus.models import get_model_class, load_model_from_checkpoint
-from nucleus.models.nucleus2_moe_divfree import (
-    Nucleus2MoEDivFreeInput,
-    cells_to_x_face,
-    cells_to_y_face,
-    domain_x_coords,
-)
+from nucleus.models import get_model_class
 from nucleus.utils.preemption import (
     PreemptionHandler, restore_training_checkpoint, save_training_checkpoint,
 )
-from nucleus.utils.set_fp32_precision import set_fp32_precision
-from nucleus.utils.sdf_reinit import sdf_reinit_sussman
 from nucleus.utils.sdf_metrics import sdf_frame_metrics
-from nucleus.utils.physical_metrics import PhysicalMetrics, BubbleMetrics, physical_metrics, bubble_metrics
-from nucleus.test import TestResults
-from nucleus.plot.plotting import plot_rollout
+from nucleus.utils.physical_metrics import physical_metrics, bubble_metrics
 from nucleus.plot.diffusion_gif import save_diffusion_gif, save_rollout_gif
 from einops import rearrange
 from pathlib import Path
@@ -68,6 +59,13 @@ def predict_surrogate(model, batch, normalizer, layout: str) -> torch.Tensor:
         output = model(batch.get_input())
         return output[0] if isinstance(output, tuple) else output
 
+    from nucleus.models.nucleus2_moe_divfree import (
+        Nucleus2MoEDivFreeInput,
+        cells_to_x_face,
+        cells_to_y_face,
+        domain_x_coords,
+    )
+
     fields = convert_layout(batch.input, target_layout="t h w c", source_layout=layout)
     sdf, temperature, velx, vely = fields.unbind(-1)
     model_input = Nucleus2MoEDivFreeInput(
@@ -91,11 +89,10 @@ def predict_surrogate(model, batch, normalizer, layout: str) -> torch.Tensor:
     ), dim=-1)
     return convert_layout(prediction, target_layout=layout, source_layout="t h w c")
 
-
 def check_preflight_file(
     filename: str,
     cfg: DictConfig,
-    model_class: type,
+    metadata_keys: tuple[list[str], list[str], list[str]],
     normalizer: Normalizer,
     rollout: bool,
 ) -> None:
@@ -103,10 +100,7 @@ def check_preflight_file(
         params = load_sim_params(filename)
         int(params["bulk_temp"])
         normalized_params = normalizer.normalize_params([params])[0]
-        get_sim_params(
-            normalized_params, model_class.expected_fluid_params,
-            model_class.expected_heater_params, model_class.expected_global_params,
-        )
+        get_sim_params(normalized_params, *metadata_keys)
         if rollout:
             for key in ("setup", "liquid"):
                 if key not in params:
@@ -121,16 +115,20 @@ def check_preflight_file(
         raise ValueError(f"{filename}: {error}") from error
 
 
-def check_preflight_batch(cfg: DictConfig, model_class: type, normalizer: Normalizer) -> None:
+def check_preflight_batch(
+    cfg: DictConfig,
+    metadata_keys: tuple[list[str], list[str], list[str]],
+    normalizer: Normalizer,
+) -> None:
     # The on-disk dataset loads windows without materializing whole trajectories.
+    fluid_params, heater_params, global_params = metadata_keys
+    layout = cfg.model_cfg.get("layout", "t h w c")
     dataset = ForecastDataset(
         filenames=cfg.data_cfg.train_paths[:1],
         input_fields=cfg.data_cfg.input_fields, output_fields=cfg.data_cfg.output_fields,
         future_time_window=cfg.future_time_window, history_time_window=cfg.history_time_window,
-        time_step=cfg.time_step, start_time=cfg.start_time, layout=cfg.model_cfg.layout,
-        fluid_params=model_class.expected_fluid_params,
-        heater_params=model_class.expected_heater_params,
-        global_params=model_class.expected_global_params,
+        time_step=cfg.time_step, start_time=cfg.start_time, layout=layout,
+        fluid_params=fluid_params, heater_params=heater_params, global_params=global_params,
         normalizer=normalizer, augment=False,
     )
     batch_size = min(cfg.batch_size, len(dataset))
@@ -139,7 +137,7 @@ def check_preflight_batch(cfg: DictConfig, model_class: type, normalizer: Normal
     batch = collate([dataset[index] for index in range(batch_size)])
     if batch.input.shape != batch.target.shape:
         raise ValueError(f"Input shape {batch.input.shape} differs from target {batch.target.shape}")
-    fields = convert_layout(batch.input, "t h w c", cfg.model_cfg.layout)
+    fields = convert_layout(batch.input, "t h w c", layout)
     _, frames, height, width, channels = fields.shape
     patch_size = cfg.model_cfg.params.patch_size
     if frames != cfg.history_time_window or height % patch_size or width % patch_size:
@@ -157,11 +155,24 @@ def run_preflight(cfg: DictConfig) -> None:
     print(f"Readable checkpoint: {cfg.checkpoint_path}", flush=True)
 
     model_class = get_model_class(cfg.model_cfg.name)
+    if cfg.model_cfg.name == "nucleus2_moe" and not hasattr(model_class, "expected_fluid_params"):
+        # This preflight reads the legacy sidecar format used by the diffusion job.
+        metadata_keys = (
+            ["inv_reynolds", "cpgas", "mugas", "rhogas", "thcogas", "stefan",
+             "prandtl", "bulk_temp", "sat_temp"],
+            ["wallTemp", "xMin", "xMax"],
+            ["gravy"],
+        )
+    else:
+        metadata_keys = (
+            model_class.expected_fluid_params, model_class.expected_heater_params,
+            model_class.expected_global_params,
+        )
     normalizer = get_normalizer(OmegaConf.to_container(cfg.normalizer_cfg, resolve=True))
-    check_preflight_batch(cfg, model_class, normalizer)
+    check_preflight_batch(cfg, metadata_keys, normalizer)
     for paths, rollout in ((cfg.data_cfg.train_paths, False), (cfg.data_cfg.test_paths, True)):
         for filename in paths:
-            check_preflight_file(filename, cfg, model_class, normalizer, rollout)
+            check_preflight_file(filename, cfg, metadata_keys, normalizer, rollout)
             print(f"Checked dataset headers and metadata: {filename}", flush=True)
     print("Diffusion preflight passed.", flush=True)
 
@@ -193,9 +204,17 @@ def main(cfg: DictConfig):
 def run_diffusion(
     cfg: DictConfig, run: wandb.sdk.wandb_run.Run, preemption: PreemptionHandler
 ) -> None:
+    from nucleus.models import load_model_from_checkpoint
+    from nucleus.utils.set_fp32_precision import set_fp32_precision
+    from nucleus.utils.sdf_reinit import sdf_reinit_sussman
+    from nucleus.test import TestResults
+    from nucleus.plot.plotting import plot_rollout
+
     set_fp32_precision()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    seed_everything(cfg.seed)
+    random.seed(cfg.seed)
+    np.random.seed(cfg.seed)
+    torch.manual_seed(cfg.seed)
 
     # Stamp each run's outputs with dataset/date/job id so successive runs don't
     # overwrite each other, matching the convention in scripts/train.py.
