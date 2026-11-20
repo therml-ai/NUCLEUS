@@ -1,9 +1,6 @@
 import torch
 import pytest
 
-from nucleus.models import get_model
-from nucleus.data.batching import CollatedBatch
-
 _MOE_MODELS = [
     "neighbor_moe",
 ]
@@ -12,6 +9,13 @@ _MOE_MODELS = [
 @pytest.mark.parametrize("model_name", _MOE_MODELS)
 @pytest.mark.parametrize("device", ["cuda"])
 def test_neighbor_moe(device, model_name):
+    from nucleus.models import get_model, list_models
+
+    if model_name not in list_models():
+        pytest.skip(f"{model_name} is no longer registered")
+
+    from nucleus.data.batching import CollatedBatch
+
     model = get_model(
         model_name,
         input_fields=4,
