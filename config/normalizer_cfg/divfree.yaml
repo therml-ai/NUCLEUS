@@ -1,0 +1,88 @@
+name: divfree
+max_domain_size: 9.0
+sdf_mean: -2.3279074305611114
+sdf_std: 1.7979946272738274
+absmax_temp: 44.43577575683594
+temp_mean: 1.6792506987435951
+temp_std: 4.6022249489630545
+velx_mean: 0.0
+velx_std: 0.24745574484181485
+vely_mean: 0.024411000032479542
+vely_std: 0.4336368038926194
+psi_mean: 5.703111210922458e-07
+psi_std: 0.341169268004409
+phi_mean: -0.11607583169821162
+phi_std: 0.07427119286022006
+sim_params_min:
+  bulk_temp: 58
+  cpgas: 0.7997
+  dt: 0.2
+  gravx: 0.0
+  gravy: -1.0
+  heater:
+    advAngle: 45.0
+    nucWaitTime: 0.4
+    rcdAngle: 45.0
+    velContact: 0.2
+    wallTemp: 87
+    xMax: 3.0
+    xMin: -3.0
+    yMax: 1.0e-13
+    yMin: 0.0
+    zMax: 3.0
+    zMin: -3.0
+  inflow_velscale: 1.0
+  inv_reynolds: 0.0043
+  mugas: 0.02816
+  num_blocks_x: 12
+  num_blocks_y: 18
+  nx_block: 16
+  ny_block: 16
+  prandtl: 7.35
+  rhogas: 0.008687
+  sat_temp: 58
+  stefan: 0.3785
+  t_final: 400.0
+  t_initial: 0.0
+  thcogas: 0.209
+  x_max: 3.0
+  x_min: -3.0
+  y_max: 9.0
+  y_min: 0.0
+
+sim_params_max:
+  bulk_temp: 58
+  cpgas: 0.7997
+  dt: 0.2
+  gravx: 0.0
+  gravy: -1.0
+  heater:
+    advAngle: 45.0
+    nucWaitTime: 0.4
+    rcdAngle: 45.0
+    velContact: 0.2
+    wallTemp: 103
+    xMax: 3.0
+    xMin: -3.0
+    yMax: 1.0e-13
+    yMin: 0.0
+    zMax: 3.0
+    zMin: -3.0
+  inflow_velscale: 1.0
+  inv_reynolds: 0.0043
+  mugas: 0.02816
+  num_blocks_x: 12
+  num_blocks_y: 18
+  nx_block: 16
+  ny_block: 16
+  prandtl: 7.35
+  rhogas: 0.008687
+  sat_temp: 58
+  stefan: 0.5873
+  t_final: 400.0
+  t_initial: 0.0
+  thcogas: 0.209
+  x_max: 3.0
+  x_min: -3.0
+  y_max: 9.0
+  y_min: 0.0

@@ -1,0 +1,8 @@
+# Diffusion configuration for denoiser training
+# Enable diffusion-based training where model learns to denoise noisy outputs
+
+enabled: true
+num_train_timesteps: 1000
+beta_start: 0.0001
+beta_end: 0.02
+prediction_type: epsilon  # "epsilon" (predict noise) or "sample" (predict denoised sample)

@@ -1,0 +1,21 @@
+name: moe_dpot
+layout: "h w t c"
+params:
+  in_channels: 4
+  out_channels: 4
+  in_timesteps: 8
+  out_timesteps: 8
+  n_blocks: 8
+  modes: 32
+  embed_dim: 768
+  mlp_ratio: 1
+  act: "gelu"
+  img_size: 64
+  patch_size: 4
+  normalize: True
+  time_agg: "mlp"
+  n_cls: 6
+  is_finetune: False
+  mixing_type: "afno"
+  depth: 8
+  out_layer_dim: 256

@@ -1,0 +1,8 @@
+name: axial_vit
+train_module_name: conditioned_forecast
+params:
+  patch_size: 4
+  embed_dim: 384
+  processor_blocks: 6
+  num_heads: 6
+  num_fluid_params: 13
