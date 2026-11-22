@@ -63,10 +63,9 @@ class Nucleus2MoEStaggeredTraining(nn.Module):
         num_unrolls = sample_num_unrolls(self.settings.max_unrolls, self.settings.push_forward_probability)
         batch = push_forward(self._next_window, batch, num_unrolls, self.settings.target_timesteps)
         output = self.model(batch.input)
-        prediction = output.prediction.tail_time_window(batch.target.num_timesteps)
-        pairs = self._prediction_target_pairs(prediction, batch.target)
+        pairs = self._prediction_target_pairs(output.prediction, batch.target)
         data_loss = pooled_l1_loss(pairs)
-        physics_loss = self._continuity_loss(prediction, batch.target)
+        physics_loss = self._continuity_loss(output.prediction, batch.target)
         loss = data_loss + self.settings.continuity_loss_weight * physics_loss + router_loss(
             output.moe_outputs, self.settings.load_balance_loss_weight, self.settings.z_loss_weight
         )
