@@ -14,16 +14,21 @@ import hydra
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 
-from nucleus.data import ForecastDataset, InMemForecastDataset
 from nucleus.data.batching import collate, get_sim_params
+from nucleus.data.forecast_dataset import ForecastDataset
+from nucleus.data.in_mem_forecast_dataset import InMemForecastDataset
 from nucleus.data.layout import convert_layout
 from nucleus.data.normalize import Normalizer, get_normalizer
 from nucleus.data.sim_params import load_sim_params
 from nucleus.models import get_model_class
+from nucleus.models.legacy_diffusion_checkpoint import load_legacy_diffusion_model
+from nucleus.plot.plotting import plot_rollout
+from nucleus.test import TestResults
 from nucleus.utils.preemption import (
     PreemptionHandler, restore_training_checkpoint, save_training_checkpoint,
 )
 from nucleus.utils.sdf_metrics import sdf_frame_metrics
+from nucleus.utils.sdf_reinit import sdf_reinit_sussman
 from nucleus.utils.physical_metrics import physical_metrics, bubble_metrics
 from nucleus.plot.diffusion_gif import save_diffusion_gif, save_rollout_gif
 from einops import rearrange
@@ -149,6 +154,7 @@ def check_preflight_batch(
 
 
 def run_preflight(cfg: DictConfig) -> None:
+    print("Diffusion training and rollout imports passed.", flush=True)
     with Path(cfg.checkpoint_path).open("rb") as checkpoint:
         if not checkpoint.read(1):
             raise ValueError(f"Empty checkpoint: {cfg.checkpoint_path}")
@@ -177,7 +183,7 @@ def run_preflight(cfg: DictConfig) -> None:
     print("Diffusion preflight passed.", flush=True)
 
 
-@hydra.main(version_base=None, config_path="../config", config_name="default")
+@hydra.main(version_base=None, config_path="../config", config_name="diffusion")
 def main(cfg: DictConfig):
     run_config = OmegaConf.to_container(cfg, resolve=True)
     if cfg.get("diffusion_preflight", False):
@@ -204,13 +210,6 @@ def main(cfg: DictConfig):
 def run_diffusion(
     cfg: DictConfig, run: wandb.sdk.wandb_run.Run, preemption: PreemptionHandler
 ) -> None:
-    from nucleus.models import load_model_from_checkpoint
-    from nucleus.utils.set_fp32_precision import set_fp32_precision
-    from nucleus.utils.sdf_reinit import sdf_reinit_sussman
-    from nucleus.test import TestResults
-    from nucleus.plot.plotting import plot_rollout
-
-    set_fp32_precision()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     random.seed(cfg.seed)
     np.random.seed(cfg.seed)
@@ -235,7 +234,7 @@ def run_diffusion(
     run.summary["run_dir"] = str(run_dir)
 
     normalizer = get_normalizer(OmegaConf.to_container(cfg.normalizer_cfg, resolve=True))
-    layout = cfg.model_cfg.layout
+    layout = cfg.model_cfg.get("layout", "t h w c")
     num_fields = len(cfg.data_cfg.output_fields)
     window_length = cfg.history_time_window
     if cfg.history_time_window != cfg.future_time_window or cfg.time_step != 1:
@@ -243,9 +242,8 @@ def run_diffusion(
     if list(cfg.data_cfg.input_fields) != list(cfg.data_cfg.output_fields):
         raise ValueError("Diffusion feedback requires matching input/output fields.")
 
-    model = load_model_from_checkpoint(
+    model = load_legacy_diffusion_model(
         cfg.checkpoint_path,
-        map_location=device,
         model_cfg=OmegaConf.to_container(cfg.model_cfg, resolve=True),
     ).to(device)
     loaded_model_name = getattr(model, "_model_name", cfg.model_cfg.name)

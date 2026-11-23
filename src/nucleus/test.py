@@ -3,11 +3,11 @@ from typing import List, Tuple
 import torch
 import numpy as np
 from nucleus.data.batching import Data
-from nucleus.data import ForecastDataset, InMemForecastDataset
+from nucleus.data.forecast_dataset import ForecastDataset
+from nucleus.data.in_mem_forecast_dataset import InMemForecastDataset
 from nucleus.data.layout import convert_layout
 from nucleus.layers.moe.topk_moe import TopkMoEOutput
 from nucleus.utils.physical_metrics import PhysicalMetrics, BubbleMetrics, physical_metrics, bubble_metrics
-from nucleus.baseline.moe_dpot import MoEPOTNet
 from nucleus.utils.sdf_reinit import (
     sdf_reinit_sussman
 )
@@ -82,6 +82,7 @@ def clip_liquid_temp(preds, fluid_params):
     return temp
     
 def run_test(cfg, model, normalizer, test_file_path: str, max_timesteps: int):
+    from nucleus.baseline.moe_dpot import MoEPOTNet
     from nucleus.baseline.poseidon import ScOTOutput
     test_dataset = InMemForecastDataset(
         filenames=[test_file_path],
