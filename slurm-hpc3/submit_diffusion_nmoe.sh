@@ -7,6 +7,7 @@
 #SBATCH --nodes=1
 #SBATCH --requeue
 #SBATCH --signal=B:USR1@90
+#SBATCH --exclude=hpc3-gpu-n54-00
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=96GB
 #SBATCH --gres=gpu:RTX6000:1
