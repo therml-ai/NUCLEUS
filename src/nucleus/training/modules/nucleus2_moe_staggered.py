@@ -20,11 +20,14 @@ from nucleus.training.modules.common import (
 )
 from nucleus.training.moe import moe_metrics, router_loss, update_router_bias
 from nucleus.training.push_forward import push_forward, sample_num_unrolls
+from nucleus.models.nucleus2_moe_divfree_projection import continuity_source, divfree_physics
+from nucleus.physics.poisson import divergence_centers_from_faces
 
 
 @dataclass(frozen=True)
 class Nucleus2MoEStaggeredTrainingSettings:
     target_timesteps: int
+    continuity_loss_weight: float = 0.0
     load_balance_loss_weight: float = 1e-5
     z_loss_weight: float = 1e-5
     flip_probability: float = 0.5
@@ -40,8 +43,8 @@ class Nucleus2MoEStaggeredTraining(nn.Module):
     """Trains a Nucleus2MoEStaggered as Nucleus2MoETraining trains a Nucleus2MoE:
     flips the raw batch, normalizes it, drops fields and adds noise to the
     normalized input, optionally pushes the input forward through the model, then
-    takes the L1 loss over every predicted field on its own grid, plus the router
-    loss."""
+    takes the L1 loss over every predicted field on its own grid, plus the
+    continuity loss (weighted by continuity_loss_weight) and the router loss."""
 
     def __init__(self, model: Nucleus2MoEStaggered, settings: Nucleus2MoEStaggeredTrainingSettings):
         super().__init__()
@@ -62,11 +65,17 @@ class Nucleus2MoEStaggeredTraining(nn.Module):
         output = self.model(batch.input)
         pairs = self._prediction_target_pairs(output.prediction, batch.target)
         data_loss = pooled_l1_loss(pairs)
-        loss = data_loss + router_loss(
+        physics_loss = self._continuity_loss(output.prediction, batch.target)
+        loss = data_loss + self.settings.continuity_loss_weight * physics_loss + router_loss(
             output.moe_outputs, self.settings.load_balance_loss_weight, self.settings.z_loss_weight
         )
         update_router_bias(self.model, output.moe_outputs)
-        metrics = {"train/loss": loss, "train/data_loss": data_loss, "train/num_unrolls": num_unrolls}
+        metrics = {
+            "train/loss": loss,
+            "train/data_loss": data_loss,
+            "train/continuity_loss": physics_loss,
+            "train/num_unrolls": num_unrolls,
+        }
         metrics |= per_field_mae(pairs, "train") | moe_metrics(output.moe_outputs, "train")
         return StepOutput(loss, metrics)
 
@@ -84,6 +93,31 @@ class Nucleus2MoEStaggeredTraining(nn.Module):
 
     def _next_window(self, window: FlashXBatch) -> FlashXBatch:
         return self.model(window).prediction.tail_time_window(self.settings.target_timesteps)
+
+    def _continuity_loss(self, prediction, target):
+        # Physics params + grid from target's config (shared between pred and target)
+        raw_target = self.model.normalizer.unnormalize(target.with_fields({"dfun": target.fields["dfun"]}))
+        physics = divfree_physics(raw_target)
+        grid = physics.grid
+
+        # Unnormalize predicted temperature and sdf to physical units for continuity_source
+        raw_pred = self.model.normalizer.unnormalize(
+            prediction.with_fields({
+                "dfun": prediction.fields["dfun"],
+                "temperature": prediction.fields["temperature"],
+            })
+        )
+        S = continuity_source(raw_pred.fields["temperature"], raw_pred.fields["dfun"], physics)
+
+        # Normalize S to match div(u_pred): velocities have zero offset so div(v_norm) = div(v_phys) / vel_scale
+        _, vel_scale = self.model.normalizer.field_offset_and_scale("velfacex")
+        S_norm = S / vel_scale
+
+        div_pred = divergence_centers_from_faces(
+            prediction.fields["velfacex"], prediction.fields["velfacey"], grid.dx, grid.dy)
+
+        residual = div_pred - S_norm
+        return residual.pow(2).mean()
 
     def _prediction_target_pairs(self, prediction: FlashXBatch, target: FlashXBatch) -> PredictionTargetPairs:
         prediction = prediction.tail_time_window(target.num_timesteps)

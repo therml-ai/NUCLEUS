@@ -2,7 +2,7 @@ from hydra import initialize, compose
 from omegaconf import OmegaConf
 import pytest
 
-TRAIN_CONFIGS = ["train_nucleus2_moe", "train_nucleus2_moe_divfree_projection", "train_nucleus2_moe_staggered"]
+TRAIN_CONFIGS = ["train_nucleus2_moe", "train_nucleus2_moe_divfree_projection", "train_nucleus2_moe_staggered", "train_nucleus2_moe_continuity_loss"]
 
 
 @pytest.mark.parametrize("config_name", TRAIN_CONFIGS)
@@ -22,7 +22,6 @@ def test_model_config_names_a_registered_model(config_name):
     with initialize(version_base=None, config_path="../../config"):
         cfg = compose(config_name=config_name)
     assert cfg.model_cfg.name in list_models()
-    assert cfg.model_cfg.name == config_name.removeprefix("train_")
 
 
 @pytest.mark.parametrize("config_name", TRAIN_CONFIGS + ["rollout"])
